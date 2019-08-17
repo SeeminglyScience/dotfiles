@@ -1,0 +1,102 @@
+// Place your key bindings in this file to overwrite the defaults
+[
+    {
+        "key": "ctrl+shift+r",
+        "command": "PowerShell.RestartSession",
+        "when": "editorTextFocus && editorLangId == 'powershell'"
+    },
+    {
+        "key": "ctrl+`",
+        "command": "workbench.action.focusActiveEditorGroup",
+        "when": "!editorFocus"
+    },
+    {
+        "key": "ctrl+`",
+        "command": "workbench.action.terminal.focus",
+        "when": "!terminalFocus"
+    },
+    {
+        "key": "ctrl+shift+a",
+        "command": "extension.align",
+        "when": "editorTextFocus"
+    },
+    {
+        "key": "alt+shift+s",
+        "command": "PowerShell.InvokeRegisteredEditorCommand",
+        "args": { "commandName": "ConvertToSplatExpression" },
+        "when": "editorLangId == 'powershell'"
+    },
+    {
+        "key": "alt+shift+n",
+        "command": "PowerShell.InvokeRegisteredEditorCommand",
+        "args": { "commandName": "AddResolvedNamespace" },
+        "when": "editorLangId == 'powershell'"
+    },
+    {
+        "key": "alt+shift+m",
+        "command": "PowerShell.InvokeRegisteredEditorCommand",
+        "args": { "commandName": "ExpandMemberExpression" },
+        "when": "editorLangId == 'powershell'"
+    },
+    {
+        "key": "alt+shift+f",
+        "command": "workbench.files.action.focusFilesExplorer"
+    },
+    {
+        "key": "r",
+        "command": "workbench.files.action.refreshFilesExplorer",
+        "when": "explorerViewletVisible && filesExplorerFocus && !inputFocus"
+    },
+    {
+        "key": "d",
+        "command": "moveFileToTrash",
+        "when": "explorerViewletVisible && filesExplorerFocus && !explorerResourceIsRoot && !inputFocus"
+    },
+    {
+        "key": "ctrl+n",
+        "command": "explorer.newFile",
+        "when": "explorerViewletVisible && filesExplorerFocus && !explorerResourceIsRoot && !inputFocus"
+    },
+    {
+        "key": "ctrl+n",
+        "command": "workbench.action.quickOpenNavigateNext",
+        "when": "inQuickOpen"
+    },
+    {
+        "key": "ctrl+p",
+        "command": "workbench.action.quickOpenNavigatePrevious",
+        "when": "inQuickOpen"
+    },
+    {
+        "key": "alt+n",
+        "command": "showNextParameterHint",
+        "when": "editorTextFocus && parameterHintsMultipleSignatures && parameterHintsVisible"
+    },
+    {
+        "key": "alt+p",
+        "command": "showPrevParameterHint",
+        "when": "editorTextFocus && parameterHintsMultipleSignatures && parameterHintsVisible"
+    },
+    {
+        "key": "k",
+        "command": "list.focusUp",
+        "when": "listFocus && listHasSelectionOrFocus && !inputFocus"
+    },
+    {
+        "key": "j",
+        "command": "list.focusDown",
+        "when": "listFocus && listHasSelectionOrFocus && !inputFocus"
+    },
+    {
+        "key": "shift+enter",
+        "command": "terminalInput.sendCustomInput",
+        "args": [ "heartEmoji" ],
+        "when": "terminalFocus"
+    },
+    {
+        "key": "ctrl+v",
+        "command": "terminalInput.sendCustomInput",
+        "args": [ "checkMark" ],
+        "when": "terminalFocus"
+    }
+]

@@ -1,0 +1,1267 @@
+{
+    // Place your snippets for il here. Each snippet is defined under a snippet name and has a prefix, body and
+    // description. The prefix is what is used to trigger the snippet and the body will be expanded and inserted. Possible variables are:
+    // $1, $2 for tab stops, $0 for the final cursor position, and ${1:label}, ${2:another} for placeholders. Placeholders with the
+    // same ids are connected.
+    // Example:
+    // "Print to console": {
+    // 	"prefix": "log",
+    // 	"body": // 		"console.log('$1');", // 		"$2"
+    // 	],
+    // 	"description": "Log output to console"
+    // }
+    "Type Reference": {
+        "prefix": "tref",
+        "body": "${1:[${2:mscorlib}]}${3:System.Object}",
+        "description": "References an external type."
+    },
+    "Member Reference": {
+        "prefix": "mref",
+        "body": "${1:[${2:mscorlib}]}${3:System.Object}::${4:MemberName}()",
+        "description": "References an external member."
+    },
+    "Well Known Types": {
+        "prefix": [ "knowntype" ],
+        "body": "${1|class ,value class ,valuetype ,object,char,string,bool,int8,int16,int32,int64,float32,float64,unsigned int8,unsigned int16,unsigned int32,unsigned int64,uint8,uint16,uint32,uint64,typedref,void,native int,native unsigned int,native uint,native float|}"
+    },
+    "New Assembly": {
+        "prefix": "newassem",
+        "body": [
+            ".assembly extern mscorlib",
+            "{",
+            "    .publickeytoken = (B7 7A 5C 56 19 34 E0 89 )",
+            "    .ver 2:0:0:0",
+            "}",
+            "",
+            ".assembly '${1:App}'",
+            "{",
+            "    .hash algorithm 0x0000800c",
+            "    .ver 1:0:0:0",
+            "}"
+        ],
+        "description": "The base for a new assembly."
+    },
+    "Application Entry Class": {
+        "prefix": "progmain",
+        "body": [
+            ".class private auto ansi beforefieldinit Program extends [mscorlib]System.Object",
+            "{",
+            "    .method private hidebysig static void Main(string[] args) cil managed",
+            "    {",
+            "        .entrypoint",
+            "        $0",
+            "        ret",
+            "    }",
+            "",
+            "    .method public hidebysig specialname rtspecialname instance void .ctor() cil managed",
+            "    {",
+            "        ldarg.0",
+            "        call instance void [mscorlib]System.Object::.ctor()",
+            "        ret",
+            "    }",
+            "}",
+        ],
+        "description": "A private class with a static Main method marked as the entry point."
+    },
+    "Class Definition": {
+        "prefix": ".class",
+        "body": [
+            ".class ${1|public,private,family,assembly|} auto ansi beforefieldinit Program extends ${2:[mscorlib]System.Object}",
+            "{",
+            "    .method public hidebysig specialname rtspecialname instance void .ctor() cil managed",
+            "    {",
+            "        ldarg.0",
+            "        call instance void ${2:[mscorlib]System.Object}::.ctor()",
+            "        ret",
+            "    }$0",
+            "}",
+        ],
+        "description": "A blank class definition."
+    },
+    "Method Definition": {
+        "prefix": ".method",
+        "body": [
+            ".method ${1|public,private,family,assembly|} ${2:hidebysig }${2:hidebysig }${2:hidebysig }${|instance,static|} ${:void} ${:MethodName}() cil managed",
+            "{",
+            "    $0",
+            "    ret",
+            "}",
+        ]
+    },
+    "Property Definition": {
+        "prefix": ".property",
+        "body": [
+            ".property ${1|instance,static|} ${2:[mscorlib]System.Object} ${3:PropertyName}()",
+            "{",
+            "    $0",
+            "}"
+        ]
+    },
+    "Getter Definition": {
+        "prefix": ".get",
+        "body": ".get ${1|instance,static|} ${2:[mscorlib]System.Object} ${3[mscorlib]System.Object}::${4:get_PropertyName}()"
+    },
+    "Setter Definition": {
+        "prefix": ".set",
+        "body": ".set ${1|instance,static|} void ${2:[mscorlib]System.Object}::${3:set_PropertyName}(${4:[mscorlib]System.Object})"
+    },
+    "Locals": {
+        "prefix": ".locals",
+        "body": ".locals        ($0)"
+    },
+    "Try Catch": {
+        "prefix": ".try",
+        "body": [
+            "try_start:",
+            "    leave.s     try_end",
+            "try_end:",
+            "    br          end",
+            "catch_start:",
+            "    leave       catch_end",
+            "catch_end:",
+            "    br          end",
+            "fail:",
+            "end:",
+            "    ret",
+            ".try try_start to try_end catch [mscorlib]System.Exception handler catch_start to catch_end"
+        ],
+    },
+    "Max Stack": {
+        "prefix": ".maxstack",
+        "body": ".maxstack      $1"
+    },
+    "Entry Method": {
+        "prefix": ".entrypoint",
+        "body": ".entrypoint"
+    },
+    "add": {
+        "prefix": "add",
+        "body": "add",
+        "description": "Adds two values and pushes the result onto the evaluation stack."
+    },
+    "add.ovf": {
+        "prefix": "add.ovf",
+        "body": "add.ovf",
+        "description": "Adds two integers, performs an overflow check, and pushes the result onto the evaluation stack."
+    },
+    "add.ovf.un": {
+        "prefix": "add.ovf.un",
+        "body": "add.ovf.un",
+        "description": "Adds two unsigned integer values, performs an overflow check, and pushes the result onto the evaluation stack."
+    },
+    "and": {
+        "prefix": "and",
+        "body": "and",
+        "description": "Computes the bitwise AND of two values and pushes the result onto the evaluation stack."
+    },
+    "arglist": {
+        "prefix": "arglist",
+        "body": "arglist",
+        "description": "Returns an unmanaged pointer to the argument list of the current method."
+    },
+    "beq": {
+        "prefix": "beq",
+        "body": "beq         $1",
+        "description": "Transfers control to a target instruction if two values are equal."
+    },
+    "beq.s": {
+        "prefix": "beq.s",
+        "body": "beq.s       $1",
+        "description": "Transfers control to a target instruction (short form) if two values are equal."
+    },
+    "bge": {
+        "prefix": "bge",
+        "body": "bge         $1",
+        "description": "Transfers control to a target instruction if the first value is greater than or equal to the second value."
+    },
+    "bge.s": {
+        "prefix": "bge.s",
+        "body": "bge.s       $1",
+        "description": "Transfers control to a target instruction (short form) if the first value is greater than or equal to the second value."
+    },
+    "bge.un": {
+        "prefix": "bge.un",
+        "body": "bge.un      $1",
+        "description": "Transfers control to a target instruction if the first value is greater than the second value, when comparing unsigned integer values or unordered float values."
+    },
+    "bge.un.s": {
+        "prefix": "bge.un.s",
+        "body": "bge.un.s    $1",
+        "description": "Transfers control to a target instruction (short form) if the first value is greater than the second value, when comparing unsigned integer values or unordered float values."
+    },
+    "bgt": {
+        "prefix": "bgt",
+        "body": "bgt         $1",
+        "description": "Transfers control to a target instruction if the first value is greater than the second value."
+    },
+    "bgt.s": {
+        "prefix": "bgt.s",
+        "body": "bgt.s       $1",
+        "description": "Transfers control to a target instruction (short form) if the first value is greater than the second value."
+    },
+    "bgt.un": {
+        "prefix": "bgt.un",
+        "body": "bgt.un      $1",
+        "description": "Transfers control to a target instruction if the first value is greater than the second value, when comparing unsigned integer values or unordered float values."
+    },
+    "bgt.un.s": {
+        "prefix": "bgt.un.s",
+        "body": "bgt.un.s    $1",
+        "description": "Transfers control to a target instruction (short form) if the first value is greater than the second value, when comparing unsigned integer values or unordered float values."
+    },
+    "ble": {
+        "prefix": "ble",
+        "body": "ble         $1",
+        "description": "Transfers control to a target instruction if the first value is less than or equal to the second value."
+    },
+    "ble.s": {
+        "prefix": "ble.s",
+        "body": "ble.s       $1",
+        "description": "Transfers control to a target instruction (short form) if the first value is less than or equal to the second value."
+    },
+    "ble.un": {
+        "prefix": "ble.un",
+        "body": "ble.un      $1",
+        "description": "Transfers control to a target instruction if the first value is less than or equal to the second value, when comparing unsigned integer values or unordered float values."
+    },
+    "ble.un.s": {
+        "prefix": "ble.un.s",
+        "body": "ble.un.s    $1",
+        "description": "Transfers control to a target instruction (short form) if the first value is less than or equal to the second value, when comparing unsigned integer values or unordered float values."
+    },
+    "blt": {
+        "prefix": "blt",
+        "body": "blt         $1",
+        "description": "Transfers control to a target instruction if the first value is less than the second value."
+    },
+    "blt.s": {
+        "prefix": "blt.s",
+        "body": "blt.s       $1",
+        "description": "Transfers control to a target instruction (short form) if the first value is less than the second value."
+    },
+    "blt.un": {
+        "prefix": "blt.un",
+        "body": "blt.un      $1",
+        "description": "Transfers control to a target instruction if the first value is less than the second value, when comparing unsigned integer values or unordered float values."
+    },
+    "blt.un.s": {
+        "prefix": "blt.un.s",
+        "body": "blt.un.s    $1",
+        "description": "Transfers control to a target instruction (short form) if the first value is less than the second value, when comparing unsigned integer values or unordered float values."
+    },
+    "bne.un": {
+        "prefix": "bne.un",
+        "body": "bne.un      $1",
+        "description": "Transfers control to a target instruction when two unsigned integer values or unordered float values are not equal."
+    },
+    "bne.un.s": {
+        "prefix": "bne.un.s",
+        "body": "bne.un.s    $1",
+        "description": "Transfers control to a target instruction (short form) when two unsigned integer values or unordered float values are not equal."
+    },
+    "box": {
+        "prefix": "box",
+        "body": "box         ${1:int32}",
+        "description": "Converts a value type to an object reference (type O)."
+    },
+    "br": {
+        "prefix": "br",
+        "body": "br          $1",
+        "description": "Unconditionally transfers control to a target instruction."
+    },
+    "br.s": {
+        "prefix": "br.s",
+        "body": "br.s        $1",
+        "description": "Unconditionally transfers control to a target instruction (short form)."
+    },
+    "break": {
+        "prefix": "break",
+        "body": "break",
+        "description": "Signals the Common Language Infrastructure (CLI) to inform the debugger that a break point has been tripped."
+    },
+    "brfalse": {
+        "prefix": "brfalse",
+        "body": "brfalse     $1",
+        "description": "Transfers control to a target instruction if value is false, a null reference (Nothing in Visual Basic), or zero."
+    },
+    "brfalse.s": {
+        "prefix": "brfalse.s",
+        "body": "brfalse.s   $1",
+        "description": "Transfers control to a target instruction if value is false, a null reference, or zero."
+    },
+    "brtrue": {
+        "prefix": "brtrue",
+        "body": "brtrue      $1",
+        "description": "Transfers control to a target instruction if value is true, not null, or non-zero."
+    },
+    "brtrue.s": {
+        "prefix": "brtrue.s",
+        "body": "brtrue.s    $1",
+        "description": "Transfers control to a target instruction (short form) if value is true, not null, or non-zero."
+    },
+    "call": {
+        "prefix": "call",
+        "body": "call        ${1:void} ${2:[mscorlib]System.Object}::${3:ToString}($4)$0",
+        "description": "Calls the method indicated by the passed method descriptor."
+    },
+    "calli": {
+        "prefix": "calli",
+        "body": "calli       ${1:unmanaged} ${2:stdcall} ${3:native int}(${4:void*})$0",
+        "description": "Calls the method indicated on the evaluation stack (as a pointer to an entry point) with arguments described by a calling convention."
+    },
+    "callvirt": {
+        "prefix": "callvirt",
+        "body": "callvirt    instance ${1:[mscorlib]System.Object} ${2:[mscorlib]System.Object}::$3($0)",
+        "description": "Calls a late-bound method on an object, pushing the return value onto the evaluation stack."
+    },
+    "castclass": {
+        "prefix": "castclass",
+        "body": "castclass   ${1:[mscorlib]System.Object}",
+        "description": "Attempts to cast an object passed by reference to the specified class."
+    },
+    "ceq": {
+        "prefix": "ceq",
+        "body": "ceq",
+        "description": "Compares two values. If they are equal, the integer value 1 (int32) is pushed onto the evaluation stack; otherwise 0 (int32) is pushed onto the evaluation stack."
+    },
+    "cgt": {
+        "prefix": "cgt",
+        "body": "cgt",
+        "description": "Compares two values. If the first value is greater than the second, the integer value 1 (int32) is pushed onto the evaluation stack; otherwise 0 (int32) is pushed onto the evaluation stack."
+    },
+    "cgt.un": {
+        "prefix": "cgt.un",
+        "body": "cgt.un",
+        "description": "Compares two unsigned or unordered values. If the first value is greater than the second, the integer value 1 (int32) is pushed onto the evaluation stack; otherwise 0 (int32) is pushed onto the evaluation stack."
+    },
+    "ckfinite": {
+        "prefix": "ckfinite",
+        "body": "ckfinite",
+        "description": "Throws ArithmeticException if value is not a finite number."
+    },
+    "clt": {
+        "prefix": "clt",
+        "body": "clt",
+        "description": "Compares two values. If the first value is less than the second, the integer value 1 (int32) is pushed onto the evaluation stack; otherwise 0 (int32) is pushed onto the evaluation stack."
+    },
+    "clt.un": {
+        "prefix": "clt.un",
+        "body": "clt.un",
+        "description": "Compares the unsigned or unordered values value1 and value2. If value1 is less than value2, then the integer value 1 (int32) is pushed onto the evaluation stack; otherwise 0 (int32) is pushed onto the evaluation stack."
+    },
+    "constrained": {
+        "prefix": "constrained",
+        "body": "constrained ${1:[mscorlib]System.Object}",
+        "description": "Constrains the type on which a virtual method call is made."
+    },
+    "conv.i": {
+        "prefix": "conv.i",
+        "body": "conv.i",
+        "description": "Converts the value on top of the evaluation stack to native int."
+    },
+    "conv.i1": {
+        "prefix": "conv.i1",
+        "body": "conv.i1",
+        "description": "Converts the value on top of the evaluation stack to int8, then extends (pads) it to int32."
+    },
+    "conv.i2": {
+        "prefix": "conv.i2",
+        "body": "conv.i2",
+        "description": "Converts the value on top of the evaluation stack to int16, then extends (pads) it to int32."
+    },
+    "conv.i4": {
+        "prefix": "conv.i4",
+        "body": "conv.i4",
+        "description": "Converts the value on top of the evaluation stack to int32."
+    },
+    "conv.i8": {
+        "prefix": "conv.i8",
+        "body": "conv.i8",
+        "description": "Converts the value on top of the evaluation stack to int64."
+    },
+    "conv.ovf.i": {
+        "prefix": "conv.ovf.i",
+        "body": "conv.ovf.i",
+        "description": "Converts the signed value on top of the evaluation stack to signed native int, throwing OverflowException on overflow."
+    },
+    "conv.ovf.i.un": {
+        "prefix": "conv.ovf.i.un",
+        "body": "conv.ovf.i.un",
+        "description": "Converts the unsigned value on top of the evaluation stack to signed native int, throwing OverflowException on overflow."
+    },
+    "conv.ovf.i1": {
+        "prefix": "conv.ovf.i1",
+        "body": "conv.ovf.i1",
+        "description": "Converts the signed value on top of the evaluation stack to signed int8 and extends it to int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.i1.un": {
+        "prefix": "conv.ovf.i1.un",
+        "body": "conv.ovf.i1.un",
+        "description": "Converts the unsigned value on top of the evaluation stack to signed int8 and extends it to int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.i2": {
+        "prefix": "conv.ovf.i2",
+        "body": "conv.ovf.i2",
+        "description": "Converts the signed value on top of the evaluation stack to signed int16 and extending it to int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.i2.un": {
+        "prefix": "conv.ovf.i2.un",
+        "body": "conv.ovf.i2.un",
+        "description": "Converts the unsigned value on top of the evaluation stack to signed int16 and extends it to int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.i4": {
+        "prefix": "conv.ovf.i4",
+        "body": "conv.ovf.i4",
+        "description": "Converts the signed value on top of the evaluation stack to signed int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.i4.un": {
+        "prefix": "conv.ovf.i4.un",
+        "body": "conv.ovf.i4.un",
+        "description": "Converts the unsigned value on top of the evaluation stack to signed int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.i8": {
+        "prefix": "conv.ovf.i8",
+        "body": "conv.ovf.i8",
+        "description": "Converts the signed value on top of the evaluation stack to signed int64, throwing OverflowException on overflow."
+    },
+    "conv.ovf.i8.un": {
+        "prefix": "conv.ovf.i8.un",
+        "body": "conv.ovf.i8.un",
+        "description": "Converts the unsigned value on top of the evaluation stack to signed int64, throwing OverflowException on overflow."
+    },
+    "conv.ovf.u": {
+        "prefix": "conv.ovf.u",
+        "body": "conv.ovf.u",
+        "description": "Converts the signed value on top of the evaluation stack to unsigned native int, throwing OverflowException on overflow."
+    },
+    "conv.ovf.u.un": {
+        "prefix": "conv.ovf.u.un",
+        "body": "conv.ovf.u.un",
+        "description": "Converts the unsigned value on top of the evaluation stack to unsigned native int, throwing OverflowException on overflow."
+    },
+    "conv.ovf.u1": {
+        "prefix": "conv.ovf.u1",
+        "body": "conv.ovf.u1",
+        "description": "Converts the signed value on top of the evaluation stack to unsigned int8 and extends it to int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.u1.un": {
+        "prefix": "conv.ovf.u1.un",
+        "body": "conv.ovf.u1.un",
+        "description": "Converts the unsigned value on top of the evaluation stack to unsigned int8 and extends it to int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.u2": {
+        "prefix": "conv.ovf.u2",
+        "body": "conv.ovf.u2",
+        "description": "Converts the signed value on top of the evaluation stack to unsigned int16 and extends it to int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.u2.un": {
+        "prefix": "conv.ovf.u2.un",
+        "body": "conv.ovf.u2.un",
+        "description": "Converts the unsigned value on top of the evaluation stack to unsigned int16 and extends it to int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.u4": {
+        "prefix": "conv.ovf.u4",
+        "body": "conv.ovf.u4",
+        "description": "Converts the signed value on top of the evaluation stack to unsigned int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.u4.un": {
+        "prefix": "conv.ovf.u4.un",
+        "body": "conv.ovf.u4.un",
+        "description": "Converts the unsigned value on top of the evaluation stack to unsigned int32, throwing OverflowException on overflow."
+    },
+    "conv.ovf.u8": {
+        "prefix": "conv.ovf.u8",
+        "body": "conv.ovf.u8",
+        "description": "Converts the signed value on top of the evaluation stack to unsigned int64, throwing OverflowException on overflow."
+    },
+    "conv.ovf.u8.un": {
+        "prefix": "conv.ovf.u8.un",
+        "body": "conv.ovf.u8.un",
+        "description": "Converts the unsigned value on top of the evaluation stack to unsigned int64, throwing OverflowException on overflow."
+    },
+    "conv.r.un": {
+        "prefix": "conv.r.un",
+        "body": "conv.r.un",
+        "description": "Converts the unsigned integer value on top of the evaluation stack to float32."
+    },
+    "conv.r4": {
+        "prefix": "conv.r4",
+        "body": "conv.r4",
+        "description": "Converts the value on top of the evaluation stack to float32."
+    },
+    "conv.r8": {
+        "prefix": "conv.r8",
+        "body": "conv.r8",
+        "description": "Converts the value on top of the evaluation stack to float64."
+    },
+    "conv.u": {
+        "prefix": "conv.u",
+        "body": "conv.u",
+        "description": "Converts the value on top of the evaluation stack to unsigned native int, and extends it to native int."
+    },
+    "conv.u1": {
+        "prefix": "conv.u1",
+        "body": "conv.u1",
+        "description": "Converts the value on top of the evaluation stack to unsigned int8, and extends it to int32."
+    },
+    "conv.u2": {
+        "prefix": "conv.u2",
+        "body": "conv.u2",
+        "description": "Converts the value on top of the evaluation stack to unsigned int16, and extends it to int32."
+    },
+    "conv.u4": {
+        "prefix": "conv.u4",
+        "body": "conv.u4",
+        "description": "Converts the value on top of the evaluation stack to unsigned int32, and extends it to int32."
+    },
+    "conv.u8": {
+        "prefix": "conv.u8",
+        "body": "conv.u8",
+        "description": "Converts the value on top of the evaluation stack to unsigned int64, and extends it to int64."
+    },
+    "cpblk": {
+        "prefix": "cpblk",
+        "body": "cpblk",
+        "description": "Copies a specified number bytes from a source address to a destination address."
+    },
+    "cpobj": {
+        "prefix": "cpobj",
+        "body": "cpobj       ${1:[mscorlib]System.Object}",
+        "description": "Copies the value type located at the address of an object (type &, * or native int) to the address of the destination object (type &, * or native int)."
+    },
+    "div": {
+        "prefix": "div",
+        "body": "div",
+        "description": "Divides two values and pushes the result as a floating-point (type F) or quotient (type int32) onto the evaluation stack."
+    },
+    "div.un": {
+        "prefix": "div.un",
+        "body": "div.un",
+        "description": "Divides two unsigned integer values and pushes the result (int32) onto the evaluation stack."
+    },
+    "dup": {
+        "prefix": "dup",
+        "body": "dup",
+        "description": "Copies the current topmost value on the evaluation stack, and then pushes the copy onto the evaluation stack."
+    },
+    "endfilter": {
+        "prefix": "endfilter",
+        "body": "endfilter",
+        "description": "Transfers control from the filter clause of an exception back to the Common Language Infrastructure (CLI) exception handler."
+    },
+    "endfinally": {
+        "prefix": "endfinally",
+        "body": "endfinally",
+        "description": "Transfers control from the fault or finally clause of an exception block back to the Common Language Infrastructure (CLI) exception handler."
+    },
+    "initblk": {
+        "prefix": "initblk",
+        "body": "initblk",
+        "description": "Initializes a specified block of memory at a specific address to a given size and initial value."
+    },
+    "initobj": {
+        "prefix": "initobj",
+        "body": "initobj     ${1:[mscorlib]System.Object}",
+        "description": "Initializes each field of the value type at a specified address to a null reference or a 0 of the appropriate primitive type."
+    },
+    "isinst": {
+        "prefix": "isinst",
+        "body": "isinst      ${1:[mscorlib]System.Object}",
+        "description": "Tests whether an object reference (type O) is an instance of a particular class."
+    },
+    "jmp": {
+        "prefix": "jmp",
+        "body": "jmp         ${1:[mscorlib]System.Object}::${2:ToString}($0)",
+        "description": "Exits current method and jumps to specified method."
+    },
+    "ldarg": {
+        "prefix": "ldarg",
+        "body": "ldarg       $1",
+        "description": "Loads an argument (referenced by a specified index value) onto the stack."
+    },
+    "ldarg.0": {
+        "prefix": "ldarg.0",
+        "body": "ldarg.0",
+        "description": "Loads the argument at index 0 onto the evaluation stack."
+    },
+    "ldarg.1": {
+        "prefix": "ldarg.1",
+        "body": "ldarg.1",
+        "description": "Loads the argument at index 1 onto the evaluation stack."
+    },
+    "ldarg.2": {
+        "prefix": "ldarg.2",
+        "body": "ldarg.2",
+        "description": "Loads the argument at index 2 onto the evaluation stack."
+    },
+    "ldarg.3": {
+        "prefix": "ldarg.3",
+        "body": "ldarg.3",
+        "description": "Loads the argument at index 3 onto the evaluation stack."
+    },
+    "ldarg.s": {
+        "prefix": "ldarg.s",
+        "body": "ldarg.s     $1",
+        "description": "Loads the argument (referenced by a specified short form index) onto the evaluation stack."
+    },
+    "ldarga": {
+        "prefix": "ldarga",
+        "body": "ldarga      $1",
+        "description": "Load an argument address onto the evaluation stack."
+    },
+    "ldarga.s": {
+        "prefix": "ldarga.s",
+        "body": "ldarga.s    $1",
+        "description": "Load an argument address, in short form, onto the evaluation stack."
+    },
+    "ldc.i4": {
+        "prefix": "ldc.i4",
+        "body": "ldc.i4       $1",
+        "description": "Pushes a supplied value of type int32 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.0": {
+        "prefix": "ldc.i4.0",
+        "body": "ldc.i4.0",
+        "description": "Pushes the integer value of 0 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.1": {
+        "prefix": "ldc.i4.1",
+        "body": "ldc.i4.1",
+        "description": "Pushes the integer value of 1 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.2": {
+        "prefix": "ldc.i4.2",
+        "body": "ldc.i4.2",
+        "description": "Pushes the integer value of 2 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.3": {
+        "prefix": "ldc.i4.3",
+        "body": "ldc.i4.3",
+        "description": "Pushes the integer value of 3 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.4": {
+        "prefix": "ldc.i4.4",
+        "body": "ldc.i4.4",
+        "description": "Pushes the integer value of 4 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.5": {
+        "prefix": "ldc.i4.5",
+        "body": "ldc.i4.5",
+        "description": "Pushes the integer value of 5 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.6": {
+        "prefix": "ldc.i4.6",
+        "body": "ldc.i4.6",
+        "description": "Pushes the integer value of 6 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.7": {
+        "prefix": "ldc.i4.7",
+        "body": "ldc.i4.7",
+        "description": "Pushes the integer value of 7 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.8": {
+        "prefix": "ldc.i4.8",
+        "body": "ldc.i4.8",
+        "description": "Pushes the integer value of 8 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.m1": {
+        "prefix": "ldc.i4.m1",
+        "body": "ldc.i4.m1",
+        "description": "Pushes the integer value of -1 onto the evaluation stack as an int32."
+    },
+    "ldc.i4.s": {
+        "prefix": "ldc.i4.s",
+        "body": "ldc.i4.s    $1",
+        "description": "Pushes the supplied int8 value onto the evaluation stack as an int32, short form."
+    },
+    "ldc.i8": {
+        "prefix": "ldc.i8",
+        "body": "ldc.i8      $1",
+        "description": "Pushes a supplied value of type int64 onto the evaluation stack as an int64."
+    },
+    "ldc.r4": {
+        "prefix": "ldc.r4",
+        "body": "ldc.r4      $1",
+        "description": "Pushes a supplied value of type float32 onto the evaluation stack as type F (float)."
+    },
+    "ldc.r8": {
+        "prefix": "ldc.r8",
+        "body": "ldc.r8      $1",
+        "description": "Pushes a supplied value of type float64 onto the evaluation stack as type F (float)."
+    },
+    "ldelem": {
+        "prefix": "ldelem",
+        "body": "ldelem      ${1:object}",
+        "description": "Loads the element at a specified array index onto the top of the evaluation stack as the type specified in the instruction."
+    },
+    "ldelem.i": {
+        "prefix": "ldelem.i",
+        "body": "ldelem.i",
+        "description": "Loads the element with type native int at a specified array index onto the top of the evaluation stack as a native int."
+    },
+    "ldelem.i1": {
+        "prefix": "ldelem.i1",
+        "body": "ldelem.i1",
+        "description": "Loads the element with type int8 at a specified array index onto the top of the evaluation stack as an int32."
+    },
+    "ldelem.i2": {
+        "prefix": "ldelem.i2",
+        "body": "ldelem.i2",
+        "description": "Loads the element with type int16 at a specified array index onto the top of the evaluation stack as an int32."
+    },
+    "ldelem.i4": {
+        "prefix": "ldelem.i4",
+        "body": "ldelem.i4",
+        "description": "Loads the element with type int32 at a specified array index onto the top of the evaluation stack as an int32."
+    },
+    "ldelem.i8": {
+        "prefix": "ldelem.i8",
+        "body": "ldelem.i8",
+        "description": "Loads the element with type int64 at a specified array index onto the top of the evaluation stack as an int64."
+    },
+    "ldelem.r4": {
+        "prefix": "ldelem.r4",
+        "body": "ldelem.r4",
+        "description": "Loads the element with type float32 at a specified array index onto the top of the evaluation stack as type F (float)."
+    },
+    "ldelem.r8": {
+        "prefix": "ldelem.r8",
+        "body": "ldelem.r8",
+        "description": "Loads the element with type float64 at a specified array index onto the top of the evaluation stack as type F (float)."
+    },
+    "ldelem.ref": {
+        "prefix": "ldelem.ref",
+        "body": "ldelem.ref",
+        "description": "Loads the element containing an object reference at a specified array index onto the top of the evaluation stack as type O (object reference)."
+    },
+    "ldelem.u1": {
+        "prefix": "ldelem.u1",
+        "body": "ldelem.u1",
+        "description": "Loads the element with type unsigned int8 at a specified array index onto the top of the evaluation stack as an int32."
+    },
+    "ldelem.u2": {
+        "prefix": "ldelem.u2",
+        "body": "ldelem.u2",
+        "description": "Loads the element with type unsigned int16 at a specified array index onto the top of the evaluation stack as an int32."
+    },
+    "ldelem.u4": {
+        "prefix": "ldelem.u4",
+        "body": "ldelem.u4",
+        "description": "Loads the element with type unsigned int32 at a specified array index onto the top of the evaluation stack as an int32."
+    },
+    "ldelema": {
+        "prefix": "ldelema",
+        "body": "ldelema     ${1:object}",
+        "description": "Loads the address of the array element at a specified array index onto the top of the evaluation stack as type & (managed pointer)."
+    },
+    "ldfld": {
+        "prefix": "ldfld",
+        "body": "ldfld       ${1:native int [mscorlib]System.Threading.NativeOverlapped::InternalLow}",
+        "description": "Finds the value of a field in the object whose reference is currently on the evaluation stack."
+    },
+    "ldflda": {
+        "prefix": "ldflda",
+        "body": "ldflda      ${1:native int [mscorlib]System.Threading.NativeOverlapped::InternalLow}",
+        "description": "Finds the address of a field in the object whose reference is currently on the evaluation stack."
+    },
+    "ldftn": {
+        "prefix": "ldftn",
+        "body": "ldftn       ${1:int32 foo(int32)}",
+        "description": "Pushes an unmanaged pointer (type native int) to the native code implementing a specific method onto the evaluation stack."
+    },
+    "ldind.i": {
+        "prefix": "ldind.i",
+        "body": "ldind.i",
+        "description": "Loads a value of type native int as a native int onto the evaluation stack indirectly."
+    },
+    "ldind.i1": {
+        "prefix": "ldind.i1",
+        "body": "ldind.i1",
+        "description": "Loads a value of type int8 as an int32 onto the evaluation stack indirectly."
+    },
+    "ldind.i2": {
+        "prefix": "ldind.i2",
+        "body": "ldind.i2",
+        "description": "Loads a value of type int16 as an int32 onto the evaluation stack indirectly."
+    },
+    "ldind.i4": {
+        "prefix": "ldind.i4",
+        "body": "ldind.i4",
+        "description": "Loads a value of type int32 as an int32 onto the evaluation stack indirectly."
+    },
+    "ldind.i8": {
+        "prefix": "ldind.i8",
+        "body": "ldind.i8",
+        "description": "Loads a value of type int64 as an int64 onto the evaluation stack indirectly."
+    },
+    "ldind.r4": {
+        "prefix": "ldind.r4",
+        "body": "ldind.r4",
+        "description": "Loads a value of type float32 as a type F (float) onto the evaluation stack indirectly."
+    },
+    "ldind.r8": {
+        "prefix": "ldind.r8",
+        "body": "ldind.r8",
+        "description": "Loads a value of type float64 as a type F (float) onto the evaluation stack indirectly."
+    },
+    "ldind.ref": {
+        "prefix": "ldind.ref",
+        "body": "ldind.ref",
+        "description": "Loads an object reference as a type O (object reference) onto the evaluation stack indirectly."
+    },
+    "ldind.u1": {
+        "prefix": "ldind.u1",
+        "body": "ldind.u1",
+        "description": "Loads a value of type unsigned int8 as an int32 onto the evaluation stack indirectly."
+    },
+    "ldind.u2": {
+        "prefix": "ldind.u2",
+        "body": "ldind.u2",
+        "description": "Loads a value of type unsigned int16 as an int32 onto the evaluation stack indirectly."
+    },
+    "ldind.u4": {
+        "prefix": "ldind.u4",
+        "body": "ldind.u4",
+        "description": "Loads a value of type unsigned int32 as an int32 onto the evaluation stack indirectly."
+    },
+    "ldlen": {
+        "prefix": "ldlen",
+        "body": "ldlen",
+        "description": "Pushes the number of elements of a zero-based, one-dimensional array onto the evaluation stack."
+    },
+    "ldloc": {
+        "prefix": "ldloc",
+        "body": "ldloc      $1",
+        "description": "Loads the local variable at a specific index onto the evaluation stack."
+    },
+    "ldloc.0": {
+        "prefix": "ldloc.0",
+        "body": "ldloc.0",
+        "description": "Loads the local variable at index 0 onto the evaluation stack."
+    },
+    "ldloc.1": {
+        "prefix": "ldloc.1",
+        "body": "ldloc.1",
+        "description": "Loads the local variable at index 1 onto the evaluation stack."
+    },
+    "ldloc.2": {
+        "prefix": "ldloc.2",
+        "body": "ldloc.2",
+        "description": "Loads the local variable at index 2 onto the evaluation stack."
+    },
+    "ldloc.3": {
+        "prefix": "ldloc.3",
+        "body": "ldloc.3",
+        "description": "Loads the local variable at index 3 onto the evaluation stack."
+    },
+    "ldloc.s": {
+        "prefix": "ldloc.s",
+        "body": "ldloc.s     $1",
+        "description": "Loads the local variable at a specific index onto the evaluation stack, short form."
+    },
+    "ldloca": {
+        "prefix": "ldloca",
+        "body": "ldloca      $1",
+        "description": "Loads the address of the local variable at a specific index onto the evaluation stack."
+    },
+    "ldloca.s": {
+        "prefix": "ldloca.s",
+        "body": "ldloca.s    $1",
+        "description": "Loads the address of the local variable at a specific index onto the evaluation stack, short form."
+    },
+    "ldnull": {
+        "prefix": "ldnull",
+        "body": "ldnull",
+        "description": "Pushes a null reference (type O) onto the evaluation stack."
+    },
+    "ldobj": {
+        "prefix": "ldobj",
+        "body": "ldobj       ${1:object}",
+        "description": "Copies the value type object pointed to by an address to the top of the evaluation stack."
+    },
+    "ldsfld": {
+        "prefix": "ldsfld",
+        "body": "ldsfld      ${1:char::MaxValue}",
+        "description": "Pushes the value of a static field onto the evaluation stack."
+    },
+    "ldsflda": {
+        "prefix": "ldsflda",
+        "body": "ldsflda     ${1:char::MaxValue}",
+        "description": "Pushes the address of a static field onto the evaluation stack."
+    },
+    "ldstr": {
+        "prefix": "ldstr",
+        "body": "ldstr       \"$1\"",
+        "description": "Pushes a new object reference to a string literal stored in the metadata."
+    },
+    "ldtoken": {
+        "prefix": "ldtoken",
+        "body": "ldtoken     ${1:object}",
+        "description": "Converts a metadata token to its runtime representation, pushing it onto the evaluation stack."
+    },
+    "ldvirtftn": {
+        "prefix": "ldvirtftn",
+        "body": "ldvirtftn   ${1:instance int32 [mscorlib]System.Object::MethodName()",
+        "description": "Pushes an unmanaged pointer (type native int) to the native code implementing a particular virtual method associated with a specified object onto the evaluation stack."
+    },
+    "leave": {
+        "prefix": "leave",
+        "body": "leave       $1",
+        "description": "Exits a protected region of code, unconditionally transferring control to a specific target instruction."
+    },
+    "leave.s": {
+        "prefix": "leave.s",
+        "body": "leave.s     $1",
+        "description": "Exits a protected region of code, unconditionally transferring control to a target instruction (short form)."
+    },
+    "localloc": {
+        "prefix": "localloc",
+        "body": "localloc",
+        "description": "Allocates a certain number of bytes from the local dynamic memory pool and pushes the address (a transient pointer, type *) of the first allocated byte onto the evaluation stack."
+    },
+    "mkrefany": {
+        "prefix": "mkrefany",
+        "body": "mkrefany    ${1:object}",
+        "description": "Pushes a typed reference to an instance of a specific type onto the evaluation stack."
+    },
+    "mul": {
+        "prefix": "mul",
+        "body": "mul",
+        "description": "Multiplies two values and pushes the result on the evaluation stack."
+    },
+    "mul.ovf": {
+        "prefix": "mul.ovf",
+        "body": "mul.ovf",
+        "description": "Multiplies two integer values, performs an overflow check, and pushes the result onto the evaluation stack."
+    },
+    "mul.ovf.un": {
+        "prefix": "mul.ovf.un",
+        "body": "mul.ovf.un",
+        "description": "Multiplies two unsigned integer values, performs an overflow check, and pushes the result onto the evaluation stack."
+    },
+    "neg": {
+        "prefix": "neg",
+        "body": "neg",
+        "description": "Negates a value and pushes the result onto the evaluation stack."
+    },
+    "newarr": {
+        "prefix": "newarr",
+        "body": "newarr      ${1:object}",
+        "description": "Pushes an object reference to a new zero-based, one-dimensional array whose elements are of a specific type onto the evaluation stack."
+    },
+    "newobj": {
+        "prefix": "newobj",
+        "body": "newobj      instance void ${1:[mscorlib]System.Object}::.ctor($3)$0",
+        "description": "Creates a new object or a new instance of a value type, pushing an object reference (type O) onto the evaluation stack."
+    },
+    "nop": {
+        "prefix": "nop",
+        "body": "nop",
+        "description": "Fills space if opcodes are patched. No meaningful operation is performed although a processing cycle can be consumed."
+    },
+    "not": {
+        "prefix": "not",
+        "body": "not",
+        "description": "Computes the bitwise complement of the integer value on top of the stack and pushes the result onto the evaluation stack as the same type."
+    },
+    "or": {
+        "prefix": "or",
+        "body": "or",
+        "description": "Compute the bitwise complement of the two integer values on top of the stack and pushes the result onto the evaluation stack."
+    },
+    "pop": {
+        "prefix": "pop",
+        "body": "pop",
+        "description": "Removes the value currently on top of the evaluation stack."
+    },
+    "prefix1": {
+        "prefix": "prefix1",
+        "body": "prefix1",
+        "description": "This API supports the product infrastructure and is not intended to be used directly from your code. This is a reserved instruction."
+    },
+    "prefix2": {
+        "prefix": "prefix2",
+        "body": "prefix2",
+        "description": "This API supports the product infrastructure and is not intended to be used directly from your code. This is a reserved instruction."
+    },
+    "prefix3": {
+        "prefix": "prefix3",
+        "body": "prefix3",
+        "description": "This API supports the product infrastructure and is not intended to be used directly from your code. This is a reserved instruction."
+    },
+    "prefix4": {
+        "prefix": "prefix4",
+        "body": "prefix4",
+        "description": "This API supports the product infrastructure and is not intended to be used directly from your code. This is a reserved instruction."
+    },
+    "prefix5": {
+        "prefix": "prefix5",
+        "body": "prefix5",
+        "description": "This API supports the product infrastructure and is not intended to be used directly from your code. This is a reserved instruction."
+    },
+    "prefix6": {
+        "prefix": "prefix6",
+        "body": "prefix6",
+        "description": "This API supports the product infrastructure and is not intended to be used directly from your code. This is a reserved instruction."
+    },
+    "prefix7": {
+        "prefix": "prefix7",
+        "body": "prefix7",
+        "description": "This API supports the product infrastructure and is not intended to be used directly from your code. This is a reserved instruction."
+    },
+    "prefixref": {
+        "prefix": "prefixref",
+        "body": "prefixref",
+        "description": "This API supports the product infrastructure and is not intended to be used directly from your code. This is a reserved instruction."
+    },
+    "readonly": {
+        "prefix": "readonly",
+        "body": "readonly",
+        "description": "Specifies that the subsequent array address operation performs no type check at run time, and that it returns a managed pointer whose mutability is restricted."
+    },
+    "refanytype": {
+        "prefix": "refanytype",
+        "body": "refanytype",
+        "description": "Retrieves the type token embedded in a typed reference."
+    },
+    "refanyval": {
+        "prefix": "refanyval",
+        "body": "refanyval   ${1:object}",
+        "description": "Retrieves the address (type &) embedded in a typed reference."
+    },
+    "rem": {
+        "prefix": "rem",
+        "body": "rem",
+        "description": "Divides two values and pushes the remainder onto the evaluation stack."
+    },
+    "rem.un": {
+        "prefix": "rem.un",
+        "body": "rem.un",
+        "description": "Divides two unsigned values and pushes the remainder onto the evaluation stack."
+    },
+    "ret": {
+        "prefix": "ret",
+        "body": "ret",
+        "description": "Returns from the current method, pushing a return value (if present) from the callee's evaluation stack onto the caller's evaluation stack."
+    },
+    "rethrow": {
+        "prefix": "rethrow",
+        "body": "rethrow",
+        "description": "Rethrows the current exception."
+    },
+    "shl": {
+        "prefix": "shl",
+        "body": "shl",
+        "description": "Shifts an integer value to the left (in zeroes) by a specified number of bits, pushing the result onto the evaluation stack."
+    },
+    "shr": {
+        "prefix": "shr",
+        "body": "shr",
+        "description": "Shifts an integer value (in sign) to the right by a specified number of bits, pushing the result onto the evaluation stack."
+    },
+    "shr.un": {
+        "prefix": "shr.un",
+        "body": "shr.un",
+        "description": "Shifts an unsigned integer value (in zeroes) to the right by a specified number of bits, pushing the result onto the evaluation stack."
+    },
+    "sizeof": {
+        "prefix": "sizeof",
+        "body": "sizeof      ${1:int32}",
+        "description": "Pushes the size, in bytes, of a supplied value type onto the evaluation stack."
+    },
+    "starg": {
+        "prefix": "starg",
+        "body": "starg       $1",
+        "description": "Stores the value on top of the evaluation stack in the argument slot at a specified index."
+    },
+    "starg.s": {
+        "prefix": "starg.s",
+        "body": "starg.s     $1",
+        "description": "Stores the value on top of the evaluation stack in the argument slot at a specified index, short form."
+    },
+    "stelem": {
+        "prefix": "stelem",
+        "body": "stelem      ${1:object}",
+        "description": "Replaces the array element at a given index with the value on the evaluation stack, whose type is specified in the instruction."
+    },
+    "stelem.i": {
+        "prefix": "stelem.i",
+        "body": "stelem.i",
+        "description": "Replaces the array element at a given index with the native int value on the evaluation stack."
+    },
+    "stelem.i1": {
+        "prefix": "stelem.i1",
+        "body": "stelem.i1",
+        "description": "Replaces the array element at a given index with the int8 value on the evaluation stack."
+    },
+    "stelem.i2": {
+        "prefix": "stelem.i2",
+        "body": "stelem.i2",
+        "description": "Replaces the array element at a given index with the int16 value on the evaluation stack."
+    },
+    "stelem.i4": {
+        "prefix": "stelem.i4",
+        "body": "stelem.i4",
+        "description": "Replaces the array element at a given index with the int32 value on the evaluation stack."
+    },
+    "stelem.i8": {
+        "prefix": "stelem.i8",
+        "body": "stelem.i8",
+        "description": "Replaces the array element at a given index with the int64 value on the evaluation stack."
+    },
+    "stelem.r4": {
+        "prefix": "stelem.r4",
+        "body": "stelem.r4",
+        "description": "Replaces the array element at a given index with the float32 value on the evaluation stack."
+    },
+    "stelem.r8": {
+        "prefix": "stelem.r8",
+        "body": "stelem.r8",
+        "description": "Replaces the array element at a given index with the float64 value on the evaluation stack."
+    },
+    "stelem.ref": {
+        "prefix": "stelem.ref",
+        "body": "stelem.ref",
+        "description": "Replaces the array element at a given index with the object ref value (type O) on the evaluation stack."
+    },
+    "stfld": {
+        "prefix": "stfld",
+        "body": "stfld       ${1:object::FieldName}",
+        "description": "Replaces the value stored in the field of an object reference or pointer with a new value."
+    },
+    "stind.i": {
+        "prefix": "stind.i",
+        "body": "stind.i",
+        "description": "Stores a value of type native int at a supplied address."
+    },
+    "stind.i1": {
+        "prefix": "stind.i1",
+        "body": "stind.i1",
+        "description": "Stores a value of type int8 at a supplied address."
+    },
+    "stind.i2": {
+        "prefix": "stind.i2",
+        "body": "stind.i2",
+        "description": "Stores a value of type int16 at a supplied address."
+    },
+    "stind.i4": {
+        "prefix": "stind.i4",
+        "body": "stind.i4",
+        "description": "Stores a value of type int32 at a supplied address."
+    },
+    "stind.i8": {
+        "prefix": "stind.i8",
+        "body": "stind.i8",
+        "description": "Stores a value of type int64 at a supplied address."
+    },
+    "stind.r4": {
+        "prefix": "stind.r4",
+        "body": "stind.r4",
+        "description": "Stores a value of type float32 at a supplied address."
+    },
+    "stind.r8": {
+        "prefix": "stind.r8",
+        "body": "stind.r8",
+        "description": "Stores a value of type float64 at a supplied address."
+    },
+    "stind.ref": {
+        "prefix": "stind.ref",
+        "body": "stind.ref",
+        "description": "Stores a object reference value at a supplied address."
+    },
+    "stloc": {
+        "prefix": "stloc",
+        "body": "stloc       $1",
+        "description": "Pops the current value from the top of the evaluation stack and stores it in a the local variable list at a specified index."
+    },
+    "stloc.0": {
+        "prefix": "stloc.0",
+        "body": "stloc.0",
+        "description": "Pops the current value from the top of the evaluation stack and stores it in a the local variable list at index 0."
+    },
+    "stloc.1": {
+        "prefix": "stloc.1",
+        "body": "stloc.1",
+        "description": "Pops the current value from the top of the evaluation stack and stores it in a the local variable list at index 1."
+    },
+    "stloc.2": {
+        "prefix": "stloc.2",
+        "body": "stloc.2",
+        "description": "Pops the current value from the top of the evaluation stack and stores it in a the local variable list at index 2."
+    },
+    "stloc.3": {
+        "prefix": "stloc.3",
+        "body": "stloc.3",
+        "description": "Pops the current value from the top of the evaluation stack and stores it in a the local variable list at index 3."
+    },
+    "stloc.s": {
+        "prefix": "stloc.s",
+        "body": "stloc.s     $1",
+        "description": "Pops the current value from the top of the evaluation stack and stores it in a the local variable list at index (short form)."
+    },
+    "stobj": {
+        "prefix": "stobj",
+        "body": "stobj       ${1:object}",
+        "description": "Copies a value of a specified type from the evaluation stack into a supplied memory address."
+    },
+    "stsfld": {
+        "prefix": "stsfld",
+        "body": "stsfld      ${1:int32 object::FieldName}",
+        "description": "Replaces the value of a static field with a value from the evaluation stack."
+    },
+    "sub": {
+        "prefix": "sub",
+        "body": "sub",
+        "description": "Subtracts one value from another and pushes the result onto the evaluation stack."
+    },
+    "sub.ovf": {
+        "prefix": "sub.ovf",
+        "body": "sub.ovf",
+        "description": "Subtracts one integer value from another, performs an overflow check, and pushes the result onto the evaluation stack."
+    },
+    "sub.ovf.un": {
+        "prefix": "sub.ovf.un",
+        "body": "sub.ovf.un",
+        "description": "Subtracts one unsigned integer value from another, performs an overflow check, and pushes the result onto the evaluation stack."
+    },
+    "switch": {
+        "prefix": "switch",
+        "body": "switch      $1",
+        "description": "Implements a jump table."
+    },
+    "tailcall": {
+        "prefix": "tailcall",
+        "body": "tailcall",
+        "description": "Performs a postfixed method call instruction such that the current method's stack frame is removed before the actual call instruction is executed."
+    },
+    "throw": {
+        "prefix": "throw",
+        "body": "throw",
+        "description": "Throws the exception object currently on the evaluation stack."
+    },
+    "unaligned": {
+        "prefix": "unaligned",
+        "body": "unaligned   $1",
+        "description": "Indicates that an address currently atop the evaluation stack might not be aligned to the natural size of the immediately following ldind, stind, ldfld, stfld, ldobj, stobj, initblk, or cpblk instruction."
+    },
+    "unbox": {
+        "prefix": "unbox",
+        "body": "unbox       ${1:int32}",
+        "description": "Converts the boxed representation of a value type to its unboxed form."
+    },
+    "unbox.any": {
+        "prefix": "unbox.any",
+        "body": "unbox.any   ${1:int32}",
+        "description": "Converts the boxed representation of a type specified in the instruction to its unboxed form."
+    },
+    "volatile": {
+        "prefix": "volatile",
+        "body": "volatile",
+        "description": "Specifies that an address currently atop the evaluation stack might be volatile, and the results of reading that location cannot be cached or that multiple stores to that location cannot be suppressed."
+    },
+    "xor": {
+        "prefix": "xor",
+        "body": "xor",
+        "description": "Computes the bitwise XOR of the top two values on the evaluation stack, pushing the result onto the evaluation stack."
+    },
+}

@@ -1,0 +1,222 @@
+<Configuration>
+    <ViewDefinitions>
+        <View>
+            <Name>System.Threading.Tasks.Task</Name>
+            <ViewSelectedBy>
+                <TypeName>System.Threading.Tasks.Task</TypeName>
+            </ViewSelectedBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Width>4</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>20</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Result</Label>
+                    </TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <PropertyName>Id</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Status</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    # This stops tasks form blocking the pipeline simply so
+                                    # they can be formatted.
+                                    if (-not $_.IsCompleted) {
+                                        return '&lt;Task Incomplete&gt;'
+                                    }
+
+                                    try {
+                                        ,$_.GetAwaiter().GetResult()
+                                    } catch {
+                                        $_
+                                    }
+                                </ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>Utility.InstalledSoftware</Name>
+            <ViewSelectedBy>
+                <TypeName>Utility.InstalledSoftware</TypeName>
+            </ViewSelectedBy>
+            <GroupBy>
+                <PropertyName>Publisher</PropertyName>
+                <CustomControl>
+                    <CustomEntries>
+                        <CustomEntry>
+                            <CustomItem>
+                                <Frame>
+                                    <FirstLineIndent>4</FirstLineIndent>
+                                    <CustomItem>
+                                        <Text>Publisher: </Text>
+                                        <ExpressionBinding>
+                                            <PropertyName>Publisher</PropertyName>
+                                        </ExpressionBinding>
+                                    </CustomItem>
+                                </Frame>
+                            </CustomItem>
+                        </CustomEntry>
+                    </CustomEntries>
+                </CustomControl>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Label>x64</Label>
+                        <Width>3</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>14</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader />
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if ($_.Is64Bit) {
+                                        # nf-fa-check
+                                        [char]0xf00c
+                                    } else {
+                                        # nf-fa-close
+                                        [char]0xf00d
+                                    }
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Version</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Name</PropertyName>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>UtilityProfile.SpecialFolderInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>UtilityProfile.SpecialFolderInfo</TypeName>
+            </ViewSelectedBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Width>1</Width>
+                        <Label>E</Label>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>20</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader />
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if ($_.DoesExist) {
+                                        # nf-fa-check
+                                        [char]0xf00c
+                                    } else {
+                                        # nf-fa-close
+                                        [char]0xf00d
+                                    }
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Name</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Value</PropertyName>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>UtilityProfile.EnumValueInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>UtilityProfile.EnumValueInfo</TypeName>
+            </ViewSelectedBy>
+            <GroupBy>
+                <PropertyName>EnumType</PropertyName>
+                <CustomControl>
+                    <CustomEntries>
+                        <CustomEntry>
+                            <CustomItem>
+                                <Text>    Enum: </Text>
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        [Microsoft.PowerShell.ToStringCodeMethods]::Type($_.EnumType)
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                                <Text> (</Text>
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        [Microsoft.PowerShell.ToStringCodeMethods]::Type($_.EnumType.GetEnumUnderlyingType())
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                                <Text>)</Text>
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        if ([Reflection.CustomAttributeExtensions]::IsDefined($_.EnumType, [FlagsAttribute], $false)) {
+                                            ' {0}' -f ([char]0xF73F)
+                                        }
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                            </CustomItem>
+                        </CustomEntry>
+                    </CustomEntries>
+                </CustomControl>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Width>8</Width>
+                        <Alignment>Right</Alignment>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>25</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>10</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader />
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <PropertyName>Value</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Name</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Hex</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Bits</PropertyName>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+    </ViewDefinitions>
+</Configuration>
