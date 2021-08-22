@@ -850,6 +850,11 @@ class SignatureWriter {
             }
         }
 
+        if ($type.Name -eq 'Nullable`1') {
+            $this.TypeInfo($type.GetGenericArguments()[0])
+            return $this.Question()
+        }
+
         if ($type.IsArray) {
             $this.TypeInfo($type.GetElementType())
             if ($type.IsSZArray) {
@@ -988,6 +993,8 @@ class SignatureWriter {
     [SignatureWriter] Dot() { return $this.Operator('.') }
 
     [SignatureWriter] OpenSquare() { return $this.Operator('[') }
+
+    [SignatureWriter] Question() { return $this.Operator('?') }
 
     [SignatureWriter] CloseSquare() { return $this.Operator(']') }
 

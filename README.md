@@ -18,7 +18,7 @@ I've added some special formatting that I'm experimenting with for the `ClassExp
 
 ### `System.Reflection.MemberInfo`
 
-![image](https://user-images.githubusercontent.com/24977523/130365428-5935d225-c320-41ef-be13-ff537dda61f7.png)
+![image](https://user-images.githubusercontent.com/24977523/130372797-eb894096-fdf2-4681-9afc-21c570f9ea58.png)
 
 ### `System.Reflection.ParameterInfo`
 
