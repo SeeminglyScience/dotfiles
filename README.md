@@ -8,6 +8,26 @@ intended to be a supported product.
 
 ![PS-theme-example](https://user-images.githubusercontent.com/24977523/63215491-3037e200-c0f5-11e9-96a6-80a893295dbe.png)
 
+## PowerShell Formatting
+
+I've added some special formatting that I'm experimenting with for the `ClassExplorer` module. All of these use the colors defined within `PSReadLine`'s options.
+
+### Overload Definitions
+
+![image](https://user-images.githubusercontent.com/24977523/130364726-f15af580-496a-43f6-9826-18352f1e6fa4.png)
+
+### `System.Reflection.MemberInfo`
+
+![image](https://user-images.githubusercontent.com/24977523/130365428-5935d225-c320-41ef-be13-ff537dda61f7.png)
+
+### `System.Reflection.ParameterInfo`
+
+![image](https://user-images.githubusercontent.com/24977523/130370283-a9e2faa8-2cea-4bde-af55-01fecb4ae4ce.png)
+
+### `System.Type`
+
+![image](https://user-images.githubusercontent.com/24977523/130370423-66ba315b-2d67-41d7-a4e3-f8b0dc057384.png)
+
 ## Requirements and/or recommendations
 
 My profile expects a lot of things to be here, and may or may not break without them.

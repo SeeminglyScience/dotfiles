@@ -116,6 +116,94 @@ $typeAccel::Add('EncodingArgumentConverterAttribute', [EncodingArgumentConverter
 $typeAccel::Add('EncodingArgumentConverter', [EncodingArgumentConverterAttribute])
 $typeAccel::Add('EncodingArgumentCompleter', [EncodingArgumentCompleter])
 
+function EnsureCommandStopperInitialized {
+    [CmdletBinding()]
+    param()
+    end {
+        if ('UtilityProfile.CommandStopper' -as [type]) {
+            return
+        }
+
+        Add-Type -TypeDefinition '
+            using System;
+            using System.ComponentModel;
+            using System.Linq.Expressions;
+            using System.Management.Automation;
+            using System.Management.Automation.Internal;
+            using System.Reflection;
+
+            namespace UtilityProfile
+            {
+                [EditorBrowsable(EditorBrowsableState.Never)]
+                [Cmdlet(VerbsLifecycle.Stop, "UpstreamCommand")]
+                public class CommandStopper : PSCmdlet
+                {
+                    private static readonly Func<PSCmdlet, Exception> s_creator;
+
+                    static CommandStopper()
+                    {
+                        ParameterExpression cmdlet = Expression.Parameter(typeof(PSCmdlet), "cmdlet");
+                        s_creator = Expression.Lambda<Func<PSCmdlet, Exception>>(
+                            Expression.New(
+                                typeof(PSObject).Assembly
+                                    .GetType("System.Management.Automation.StopUpstreamCommandsException")
+                                    .GetConstructor(
+                                        BindingFlags.Public | BindingFlags.Instance,
+                                        null,
+                                        new Type[] { typeof(InternalCommand) },
+                                        null),
+                                cmdlet),
+                            "NewStopUpstreamCommandsException",
+                            new ParameterExpression[] { cmdlet })
+                            .Compile();
+                    }
+
+                    [Parameter(Position = 0, Mandatory = true)]
+                    [ValidateNotNull]
+                    public Exception Exception { get; set; }
+
+                    [Hidden, EditorBrowsable(EditorBrowsableState.Never)]
+                    public static void Stop(PSCmdlet cmdlet)
+                    {
+                        var exception = s_creator(cmdlet);
+                        cmdlet.SessionState.PSVariable.Set("__exceptionToThrow", exception);
+                        var variable = GetOrCreateVariable(cmdlet, "__exceptionToThrow");
+                        object oldValue = variable.Value;
+                        try
+                        {
+                            variable.Value = exception;
+                            ScriptBlock.Create("& $ExecutionContext.InvokeCommand.GetCmdletByTypeName([UtilityProfile.CommandStopper]) $__exceptionToThrow")
+                                .GetSteppablePipeline(CommandOrigin.Internal)
+                                .Begin(false);
+                        }
+                        finally
+                        {
+                            variable.Value = oldValue;
+                        }
+                    }
+
+                    private static PSVariable GetOrCreateVariable(PSCmdlet cmdlet, string name)
+                    {
+                        PSVariable result = cmdlet.SessionState.PSVariable.Get(name);
+                        if (result != null)
+                        {
+                            return result;
+                        }
+
+                        result = new PSVariable(name, null);
+                        cmdlet.SessionState.PSVariable.Set(result);
+                        return result;
+                    }
+
+                    protected override void BeginProcessing()
+                    {
+                        throw Exception;
+                    }
+                }
+            }'
+    }
+}
+
 function Invoke-VSCode {
     [Alias('code')]
     [CmdletBinding()]
@@ -210,8 +298,8 @@ function Get-Gac {
             if ($result.Groups['Token'].Success) {
                 $publicKeyToken = $result.Groups['Token'].Value
                 $token = [byte[]]::new(8)
-                for ($i = 2; $i -lt $publicKeyToken.Length; $i += 2) {
-                    $asHexString = '0x{0}{1}' -f $publicKeyToken[$i - 1], $publicKeyToken[$i]
+                for ($i = $publicKeyToken.Length - 2; $i -ge 0; $i -= 2) {
+                    $asHexString = '0x{0}{1}' -f $publicKeyToken[$i], $publicKeyToken[$i + 1]
                     $token[$i / 2] = $asHexString
                 }
 
@@ -2372,20 +2460,24 @@ function Invoke-Setup {
     end {
         $cmdlet = $PSCmdlet
         try {
-            $setupFile = Get-Item $Path -ErrorAction Stop
-
-            if ([string]::IsNullOrEmpty($WorkingDirectory)) {
-                $WorkingDirectory = Split-Path $setupFile
+            if ($Path.Contains([char][Path]::DirectorySeparatorChar) -or $Path.Contains([char][Path]::AltDirectorySeparatorChar)) {
+                $setupFile = (Get-Item $Path -ErrorAction Stop).FullName
             } else {
-                $WorkingDirectory = (Resolve-Path $WorkingDirectory -ErrorAction Stop).Path
+                $setupFile = (Get-Command $Path -CommandType Application -ErrorAction Stop).Source
+            }
+
+            if ($PSBoundParameters.ContainsKey((nameof{$WorkingDirectory}))) {
+                $WorkingDirectory = (Resolve-Path $WorkingDirectory -ErrorAction Stop).ProviderPath
+            } else {
+                $WorkingDirectory = $ExecutionContext.SessionState.Path.CurrentFileSystemLocation.ProviderPath
             }
         } catch {
             $PSCmdlet.ThrowTerminatingError($PSItem)
             return
         }
 
-        Use-Location $WorkingDirectory {
-            $proc = Start-Process -FilePath $setupFile.FullName -ArgumentList $ArgumentList -PassThru
+        $body = {
+            $proc = Start-Process -FilePath $setupFile -ArgumentList $ArgumentList -PassThru
             while (-not $proc.WaitForExit(200)) { }
             if (0 -eq $proc.ExitCode) {
                 return
@@ -2398,6 +2490,13 @@ function Invoke-Setup {
                     <# errorCategory: #> [ErrorCategory]::InvalidOperation,
                     <# targetObject:  #> $proc.ExitCode))
         }
+
+        if ($PSBoundParameters.ContainsKey((nameof{$WorkingDirectory}))) {
+            Use-Location $WorkingDirectory $body
+            return
+        }
+
+        & $body
     }
 }
 
@@ -2666,17 +2765,138 @@ function ConvertTo-HexString {
     }
 }
 
-filter decimal { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([decimal]) } }
-filter double { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([double]) } }
-filter single { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([single]) } }
-filter ulong { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([uint64]) } }
-filter long { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([int64]) } }
-filter uint { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([uint32]) } }
-filter int { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([int]) } }
-filter ushort { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([uint16]) } }
-filter short { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([int16]) } }
-filter byte { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([byte]) } }
-filter sbyte { foreach ($currentItem in $PSItem) { Convert-Object -InputObject $currentItem -Type ([sbyte]) } }
+function ConvertTo-Decimal {
+    [CmdletBinding()]
+    [OutputType([decimal])]
+    [Alias('decimal')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([decimal])
+        }
+    }
+}
+
+function ConvertTo-Double {
+    [CmdletBinding()]
+    [OutputType([double])]
+    [Alias('double')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([double])
+        }
+    }
+}
+
+function ConvertTo-Single {
+    [CmdletBinding()]
+    [OutputType([single])]
+    [Alias('single')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([single])
+        }
+    }
+}
+
+function ConvertTo-UInt64 {
+    [CmdletBinding()]
+    [OutputType([ulong])]
+    [Alias('ulong')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([ulong])
+        }
+    }
+}
+
+function ConvertTo-Int64 {
+    [CmdletBinding()]
+    [OutputType([long])]
+    [Alias('long')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([long])
+        }
+    }
+}
+
+function ConvertTo-UInt32 {
+    [CmdletBinding()]
+    [OutputType([uint])]
+    [Alias('uint')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([uint])
+        }
+    }
+}
+
+function ConvertTo-Int32 {
+    [CmdletBinding()]
+    [OutputType([int])]
+    [Alias('int')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([int])
+        }
+    }
+}
+
+function ConvertTo-UInt16 {
+    [CmdletBinding()]
+    [OutputType([ushort])]
+    [Alias('ushort')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([ushort])
+        }
+    }
+}
+
+function ConvertTo-Int16 {
+    [CmdletBinding()]
+    [OutputType([short])]
+    [Alias('short')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([short])
+        }
+    }
+}
+
+function ConvertTo-Byte {
+    [CmdletBinding()]
+    [OutputType([byte])]
+    [Alias('byte')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([byte])
+        }
+    }
+}
+
+function ConvertTo-SByte {
+    [CmdletBinding()]
+    [OutputType([sbyte])]
+    [Alias('sbyte')]
+    param([Parameter(ValueFromPipeline)][psobject] $InputObject)
+    process {
+        foreach ($currentItem in $InputObject) {
+            Convert-Object -InputObject $currentItem -Type ([sbyte])
+        }
+    }
+}
+
 
 function ConvertTo-Char {
     [Alias('char')]
@@ -2700,7 +2920,7 @@ function ConvertTo-Char {
 }
 
 function Convert-Object {
-    [Alias('convert')]
+    [Alias('convert', 'cast')]
     [CmdletBinding(PositionalBinding = $false)]
     param(
         [Parameter(ValueFromPipeline)]
@@ -2745,11 +2965,45 @@ function ConvertTo-BitString {
         [string] $HalfByteSeparator = '.'
     )
     begin {
+        $toBytes = [psdelegate]{
+            ($a) => { [MemoryMarshal]::AsBytes([MemoryExtensions]::AsSpan($a)).ToArray() }
+        }
+
         function GetBinaryString([psobject] $item) {
             $numeric = number $item
             if ($null -eq $numeric) {
                 return
             }
+
+            $bits = [convert]::ToString($numeric, <# toBase: #> 2)
+            if ($PSCmdlet.MyInvocation.BoundParameters.ContainsKey((nameof{$Padding}))) {
+                $padAmount = $Padding * 8
+                if ($padAmount -ge $bits.Length) {
+                    return $bits.PadLeft($Padding * 8, [char]'0')
+                }
+            }
+
+            $padAmount = 8 - ($bits.Length % 8)
+            if ($padAmount -eq 8) {
+                return $bits
+            }
+
+            return $bits.PadLeft($padAmount + $bits.Length, [char]'0')
+        }
+
+        function GetBinaryString([psobject] $item) {
+            $numeric = number $item
+            if ($null -eq $numeric) {
+                return
+            }
+
+            $delegateType = [Func`2].MakeGenericType(
+                $numeric.GetType().MakeArrayType(),
+                [byte[]])
+
+            $toBytesCompiled = $toBytes -as $delegateType
+            $bytes = $toBytesCompiled.Invoke($numeric)
+            [array]::Reverse($bytes)
 
             $bits = [convert]::ToString($numeric, <# toBase: #> 2)
             if ($PSCmdlet.MyInvocation.BoundParameters.ContainsKey((nameof{$Padding}))) {
@@ -2792,15 +3046,6 @@ function Select-FirstObject {
     )
     begin {
         $amountProcessed = 0
-
-        # You can emit the internal "StopUpstreamCommandsException" used by Select-Object via a
-        # SteppablePipeline. This works while other methods don't because the compiler treats
-        # method invocation exceptions differently if they come from one of SteppablePipeline's
-        # methods.  Instead of wrapping them automatically, they'll emit like they came from our
-        # command (sorta).
-        $wrappedCommand = { & $ExecutionContext.InvokeCommand.GetCmdletByTypeName([SelectObjectCommand]) -First 1 }
-        $stopper = $wrappedCommand.GetSteppablePipeline([CommandOrigin]::Internal)
-        $stopper.Begin(<# expectingInput: #> $true)
     }
     process {
         if ($null -eq $InputObject) {
@@ -2812,7 +3057,8 @@ function Select-FirstObject {
 
         $amountProcessed++
         if ($amountProcessed -ge $Count) {
-            $stopper.Process($PSItem)
+            EnsureCommandStopperInitialized
+            [UtilityProfile.CommandStopper]::Stop($PSCmdlet)
         }
     }
 }
@@ -2882,15 +3128,15 @@ function Select-ObjectIndex {
     )
     begin {
         $currentIndex = 0
-        $wrappedCommand = { & $ExecutionContext.InvokeCommand.GetCmdletByTypeName([SelectObjectCommand]) -First 1 }
-        $stopper = $wrappedCommand.GetSteppablePipeline([CommandOrigin]::Internal)
-        $stopper.Begin(<# expectingInput: #> $true)
-
         $lastPipe = $null
         $isIndexNegative = $Index -lt 0
-        if ($Index -lt 0) {
-            $keepCount = $Index * -1
-            $lastPipe = { Select-LastObject -Count $keepCount }.GetSteppablePipeline([CommandOrigin]::Internal)
+
+        if ($isIndexNegative) {
+            $lastParams = @{
+                Count = $Index * -1
+            }
+
+            $lastPipe = { Select-LastObject @lastParams }.GetSteppablePipeline([CommandOrigin]::Internal)
             $lastPipe.Begin($MyInvocation.ExpectingInput)
         }
     }
@@ -2903,14 +3149,15 @@ function Select-ObjectIndex {
             if ($currentIndex -eq $Index) {
                 # yield
                 $InputObject
-                $stopper.Process($PSItem)
+                EnsureCommandStopperInitialized
+                [UtilityProfile.CommandStopper]::Stop($PSCmdlet)
             }
 
             $currentIndex++
             return
         }
 
-        $lastPipe.Process($InputObject)
+        $lastPipe.Process($PSItem)
     }
     end {
         if ($null -ne $lastPipe) {
@@ -2929,18 +3176,58 @@ function Skip-Object {
 
         [Parameter(Position = 0)]
         [ValidateRange(1, [int]::MaxValue)]
-        [int] $Count = 1
+        [int] $Count = 1,
+
+        [switch] $Last
     )
     begin {
         $currentIndex = 0
+        if ($Last) {
+            $buffer = [List[psobject]]::new()
+        }
     }
     process {
+        if ($Last) {
+            $buffer.Add($InputObject)
+            return
+        }
+
         if ($currentIndex -ge $Count) {
             # yield
             $InputObject
         }
 
         $currentIndex++
+    }
+    end {
+        if (-not $Last) {
+            return
+        }
+
+        return $buffer[0..($buffer.Count - $Count - 1)]
+    }
+}
+
+function Skip-LastObject {
+    [Alias('skiplast')]
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject,
+
+        [Parameter(Position = 0)]
+        [ValidateRange(1, [int]::MaxValue)]
+        [int] $Count = 1
+    )
+    begin {
+        $pipe = { Skip-Object -Last @PSBoundParameters }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+        $pipe.Begin($MyInvocation.ExpectingInput)
+    }
+    process {
+        $pipe.Process($PSItem)
+    }
+    end {
+        $pipe.End()
     }
 }
 
@@ -3168,3 +3455,1343 @@ function Edit-String {
         }
     }
 }
+
+function Get-EnvironmentVariable {
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(Position = 0, ValueFromPipeline)]
+        [SupportsWildcards()]
+        [string] $Name,
+
+        [Parameter()]
+        [EnvironmentVariableTarget] $Scope = [EnvironmentVariableTarget]::Process
+    )
+    begin {
+        $alreadyProcessed = $null
+
+        $caseSensitive = [Environment]::GetEnvironmentVariables($Scope)
+        $variables = [Dictionary[string, ValueTuple[string, string]]]::new(
+            $caseSensitive.Count,
+            [StringComparer]::OrdinalIgnoreCase)
+
+        foreach ($kvp in $caseSensitive.GetEnumerator()) {
+            $variables.Add(
+                $kvp.Key,
+                [ValueTuple]::Create($kvp.Key, $kvp.Value))
+        }
+    }
+    process {
+        if (-not $PSBoundParameters.ContainsKey((nameof{$Name})) -or [string]::IsNullOrEmpty($Name)) {
+            return
+        }
+
+        if ($null -eq $alreadyProcessed) {
+            $alreadyProcessed = [HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        }
+
+        if (-not [WildcardPattern]::ContainsWildcardCharacters($Name)) {
+            $value = default([ValueTuple[string, string]])
+            if ($variables.TryGetValue($Name, [ref] $value)) {
+                return [PSCustomObject]@{
+                    PSTypeName = 'UtilityProfile.EnvironmentVariable'
+                    Name = $value.Item1
+                    Value = $value.Item2
+                    Scope = $Scope
+                }
+            }
+
+            $exception = [PSArgumentException]::new(
+                "Cannot find environment variable '{0}' because it does not exist." -f $Name,
+                (nameof{$Name}))
+
+            $PSCmdlet.WriteError(
+                [ErrorRecord]::new(
+                    <# exception:     #> $exception,
+                    <# errorId:       #> 'EnvVarNotFound',
+                    <# errorCategory: #> [ErrorCategory]::ObjectNotFound,
+                    <# targetObject:  #> $Name))
+
+            return
+        }
+
+        foreach ($kvp in $variables.GetEnumerator()) {
+            if ($kvp.Key -like $Name -and $alreadyProcessed.Add($kvp.Name)) {
+                return [PSCustomObject]@{
+                    PSTypeName = 'UtilityProfile.EnvironmentVariable'
+                    Name = $kvp.Value.Item1
+                    Value = $kvp.Value.Item2
+                    Scope = $Scope
+                }
+            }
+        }
+    }
+    end {
+        if ($MyInvocation.ExpectingInput -or $PSBoundParameters.ContainsKey((nameof{$Name}))) {
+            return
+        }
+
+        foreach ($kvp in $variables.GetEnumerator()) {
+            return [PSCustomObject]@{
+                PSTypeName = 'UtilityProfile.EnvironmentVariable'
+                Name = $kvp.Value.Item1
+                Value = $kvp.Value.Item2
+                Scope = $Scope
+            }
+        }
+    }
+}
+
+function Set-EnvironmentVariable {
+    [CmdletBinding(PositionalBinding = $false, SupportsShouldProcess)]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
+        [Alias('Name', 'Variable')]
+        [AllowNull()]
+        [SupportsWildcards()]
+        [psobject] $InputObject,
+
+        [Parameter(Mandatory, Position = 1)]
+        [AllowEmptyString()]
+        [AllowNull()]
+        [string] $Value,
+
+        [Parameter()]
+        [EnvironmentVariableTarget] $Scope = [EnvironmentVariableTarget]::Process
+    )
+    begin {
+        $isScopeSet = $PSBoundParameters.ContainsKey((nameof{$Scope}))
+        $shouldProcess = {
+            param([string] $name) end {
+                return $PSCmdlet.ShouldProcess("$name=$Value", 'Set Environment Variable')
+            }
+        }
+    }
+    process {
+        if ($null -eq $InputObject) {
+            return
+        }
+
+        foreach ($obj in $InputObject) {
+            if ($obj.PSTypeNames.Contains('UtilityProfile.EnvironmentVariable')) {
+                if (& $shouldProcess $obj.Name) {
+                    $scopeToUse = $obj.Scope
+                    if ($isScopeSet) {
+                        $scopeToUse = $Scope
+                    }
+
+                    [Environment]::SetEnvironmentVariable(
+                        $obj.Name,
+                        $Value,
+                        $scopeToUse)
+                }
+
+                continue
+            }
+
+            if ($obj -is [string]) {
+                if (& $shouldProcess $obj) {
+                    [Environment]::SetEnvironmentVariable(
+                        $obj,
+                        $Value,
+                        $Scope)
+                }
+
+                continue
+            }
+
+            $name = [string]$obj
+            if (-not (& $shouldProcess $name)) {
+                continue
+            }
+
+            [Environment]::SetEnvironmentVariable(
+                $name,
+                $Value,
+                $obj.Scope)
+        }
+    }
+}
+
+function Get-PathEntry {
+    [OutputType([string])]
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [SupportsWildcards()]
+        [string] $Name,
+
+        [Parameter()]
+        [EnvironmentVariableTarget] $Scope = [EnvironmentVariableTarget]::Process
+    )
+    begin {
+        $entries = [Environment]::GetEnvironmentVariable('PATH', $Scope) -split [Path]::PathSeparator
+        $alreadyProcessed = $null
+    }
+    process {
+        if (-not $PSBoundParameters.ContainsKey((nameof{$Name})) -or [string]::IsNullOrEmpty($Name)) {
+            return
+        }
+
+        if ($null -eq $alreadyProcessed) {
+            $alreadyProcessed = [HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        }
+
+
+    }
+}
+
+class IsSafeDisposableFactoryVisitor : ICustomAstVisitor2 {
+    hidden [bool] $_hasSeenInitialScriptBlockAst;
+
+    [object] VisitTypeDefinition([TypeDefinitionAst] $typeDefinitionAst) { return $false }
+
+    [object] VisitPropertyMember([PropertyMemberAst] $propertyMemberAst) { return $false }
+
+    [object] VisitFunctionMember([FunctionMemberAst] $functionMemberAst) { return $false }
+
+    [object] VisitBaseCtorInvokeMemberExpression([BaseCtorInvokeMemberExpressionAst] $baseCtorInvokeMemberExpressionAst) { return $false }
+
+    [object] VisitUsingStatement([UsingStatementAst] $usingStatement) { return $false }
+
+    [object] VisitConfigurationDefinition([ConfigurationDefinitionAst] $configurationDefinitionAst) { return $false }
+
+    [object] VisitDynamicKeywordStatement([DynamicKeywordStatementAst] $dynamicKeywordAst) { return $false }
+
+    [object] VisitErrorStatement([ErrorStatementAst] $errorStatementAst) { return $false }
+
+    [object] VisitErrorExpression([ErrorExpressionAst] $errorExpressionAst) { return $false }
+
+    [object] VisitScriptBlock([ScriptBlockAst] $scriptBlockAst) {
+        if ($this._hasSeenInitialScriptBlockAst) {
+            return $false
+        }
+
+        $this._hasSeenInitialScriptBlockAst = $true
+        if ($scriptBlockAst.BeginBlock) {
+            return $false
+        }
+
+        if ($scriptBlockAst.ProcessBlock) {
+            return $false
+        }
+
+        if ($scriptBlockAst.DynamicParamBlock) {
+            return $false
+        }
+
+        if ($scriptBlockAst.ParamBlock.Parameters) {
+            return $false
+        }
+
+        return $scriptBlockAst.EndBlock.Visit($this)
+    }
+
+    [object] VisitParamBlock([ParamBlockAst] $paramBlockAst) { return $false }
+
+    [object] VisitNamedBlock([NamedBlockAst] $namedBlockAst) {
+        if ($namedBlockAst.Statements.Count -eq 0) {
+            return $true
+        }
+
+        if ($namedBlockAst.Statements.Count -gt 1) {
+            return $false
+        }
+
+        return $namedBlockAst.Statements[0].Visit($this)
+    }
+
+    [object] VisitTypeConstraint([TypeConstraintAst] $typeConstraintAst) { return $true }
+
+    [object] VisitAttribute([AttributeAst] $attributeAst) { return $false }
+
+    [object] VisitNamedAttributeArgument([NamedAttributeArgumentAst] $namedAttributeArgumentAst) { return $false }
+
+    [object] VisitParameter([ParameterAst] $parameterAst) { return $false }
+
+    [object] VisitFunctionDefinition([FunctionDefinitionAst] $functionDefinitionAst) { return $false }
+
+    [object] VisitStatementBlock([StatementBlockAst] $statementBlockAst) { return $false }
+
+    [object] VisitIfStatement([IfStatementAst] $ifStmtAst) { return $false }
+
+    [object] VisitTrap([TrapStatementAst] $trapStatementAst) { return $false }
+
+    [object] VisitSwitchStatement([SwitchStatementAst] $switchStatementAst) { return $false }
+
+    [object] VisitDataStatement([DataStatementAst] $dataStatementAst) { return $false }
+
+    [object] VisitForEachStatement([ForEachStatementAst] $forEachStatementAst) { return $false }
+
+    [object] VisitDoWhileStatement([DoWhileStatementAst] $doWhileStatementAst) { return $false }
+
+    [object] VisitForStatement([ForStatementAst] $forStatementAst) { return $false }
+
+    [object] VisitWhileStatement([WhileStatementAst] $whileStatementAst) { return $false }
+
+    [object] VisitCatchClause([CatchClauseAst] $catchClauseAst) { return $false }
+
+    [object] VisitTryStatement([TryStatementAst] $tryStatementAst) { return $false }
+
+    [object] VisitBreakStatement([BreakStatementAst] $breakStatementAst) { return $false }
+
+    [object] VisitContinueStatement([ContinueStatementAst] $continueStatementAst) { return $false }
+
+    [object] VisitReturnStatement([ReturnStatementAst] $returnStatementAst) {
+        return $returnStatementAst.Pipeline.Visit($this)
+    }
+
+    [object] VisitExitStatement([ExitStatementAst] $exitStatementAst) { return $false }
+
+    [object] VisitThrowStatement([ThrowStatementAst] $throwStatementAst) { return $false }
+
+    [object] VisitDoUntilStatement([DoUntilStatementAst] $doUntilStatementAst) { return $false }
+
+    [object] VisitAssignmentStatement([AssignmentStatementAst] $assignmentStatementAst) {
+        $targets = [ExpressionAst[]]$assignmentStatementAst.GetAssignmentTargets()
+        if ($targets.Length -gt 1) {
+            return $false
+        }
+
+        return $assignmentStatementAst.Right.Visit($this)
+    }
+
+    [object] VisitPipeline([PipelineAst] $pipelineAst) {
+        if ($pipelineAst.Background) {
+            return $false
+        }
+
+        if ($pipelineAst.PipelineElements.Count -eq 0) {
+            return $true
+        }
+
+        if ($pipelineAst.PipelineElements.Count -gt 1) {
+            return $false
+        }
+
+        return $pipelineAst.PipelineElements[0].Visit($this)
+    }
+
+    [object] VisitCommand([CommandAst] $commandAst) { return $false }
+
+    [object] VisitCommandExpression([CommandExpressionAst] $commandExpressionAst) {
+        if ($commandExpressionAst.Redirections) {
+            return $false
+        }
+
+        return $commandExpressionAst.Expression.Visit($this)
+    }
+
+    [object] VisitCommandParameter([CommandParameterAst] $commandParameterAst) { return $false }
+
+    [object] VisitFileRedirection([FileRedirectionAst] $fileRedirectionAst) { return $false }
+
+    [object] VisitMergingRedirection([MergingRedirectionAst] $mergingRedirectionAst) { return $false }
+
+    [object] VisitBinaryExpression([BinaryExpressionAst] $binaryExpressionAst) { return $false }
+
+    [object] VisitUnaryExpression([UnaryExpressionAst] $unaryExpressionAst) { return $false }
+
+    [object] VisitConvertExpression([ConvertExpressionAst] $convertExpressionAst) { return $false }
+
+    [object] VisitConstantExpression([ConstantExpressionAst] $constantExpressionAst) { return $true }
+
+    [object] VisitStringConstantExpression([StringConstantExpressionAst] $stringConstantExpressionAst) { return $true }
+
+    [object] VisitSubExpression([SubExpressionAst] $subExpressionAst) { return $false }
+
+    [object] VisitUsingExpression([UsingExpressionAst] $usingExpressionAst) { return $false }
+
+    [object] VisitVariableExpression([VariableExpressionAst] $variableExpressionAst) { return $false }
+
+    [object] VisitTypeExpression([TypeExpressionAst] $typeExpressionAst) { return $false }
+
+    [object] VisitMemberExpression([MemberExpressionAst] $memberExpressionAst) { return $true }
+
+    [object] VisitInvokeMemberExpression([InvokeMemberExpressionAst] $invokeMemberExpressionAst) { return $true }
+
+    [object] VisitArrayExpression([ArrayExpressionAst] $arrayExpressionAst) { return $false }
+
+    [object] VisitArrayLiteral([ArrayLiteralAst] $arrayLiteralAst) { return $false }
+
+    [object] VisitHashtable([HashtableAst] $hashtableAst) { return $false }
+
+    [object] VisitScriptBlockExpression([ScriptBlockExpressionAst] $scriptBlockExpressionAst) { return $false }
+
+    [object] VisitParenExpression([ParenExpressionAst] $parenExpressionAst) {
+        return $parenExpressionAst.Pipeline.Visit($this)
+    }
+
+    [object] VisitExpandableStringExpression([ExpandableStringExpressionAst] $expandableStringExpressionAst) { return $false }
+
+    [object] VisitIndexExpression([IndexExpressionAst] $indexExpressionAst) { return $false }
+
+    [object] VisitAttributedExpression([AttributedExpressionAst] $attributedExpressionAst) { return $false }
+
+    [object] VisitBlockStatement([BlockStatementAst] $blockStatementAst) { return $false }
+}
+
+function Use-Object {
+    [Alias('use')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [ValidateNotNull()]
+        [scriptblock] $Factory,
+
+        [Parameter(Mandatory, Position = 1)]
+        [ValidateNotNull()]
+        [scriptblock] $Action
+    )
+    begin {
+        $scriptAst = [ScriptBlockAst]$Factory.Ast
+        $statement = [StatementAst]$scriptAst.EndBlock.Statements[0].Copy()
+        if (-not $statement.Visit([IsSafeDisposableFactoryVisitor]::new())) {
+            $exception = [PSArgumentException]::new(
+                'Unable to verify that the disposable factory script can reliably return an ' +
+                'object once it''s created. Please ensure that the factory script is as simple ' +
+                'as possible and then try the command again.',
+                (nameof{$Factory}))
+
+            $PSCmdlet.ThrowTerminatingError(
+                [ErrorRecord]::new(
+                    <# exception:     #> $exception,
+                    <# errorId:       #> 'FactoryTooComplex',
+                    <# errorCategory: #> [ErrorCategory]::InvalidArgument,
+                    <# targetObject:  #> $Factory))
+            return
+        }
+
+        $emptyTraps = [TrapStatementAst[]]::new(0)
+        $ep = [ScriptPosition]::new('', 0, 0, '', '')
+        $ee = [ScriptExtent]::new($ep, $ep)
+
+        $assignment = [AssignmentStatementAst]::new(
+            $statement.Extent,
+            [MemberExpressionAst]::new(
+                $ee,
+                [IndexExpressionAst]::new(
+                    $ee,
+                    [VariableExpressionAst]::new($ee, 'args', $false),
+                    [ConstantExpressionAst]::new($ee, 0)),
+                [StringConstantExpressionAst]::new($ee, 'Value', [StringConstantType]::BareWord),
+                $false),
+            [TokenKind]::Equals,
+            $statement,
+            $ee)
+
+        $newSbAst = [ScriptBlockAst]::new(
+            $scriptAst.Extent,
+            $null,
+            [StatementBlockAst]::new($scriptAst.Extent, [StatementAst[]]$assignment, $emptyTraps),
+            <# isFilter: #> $false)
+
+        $sb = $newSbAst.GetScriptBlock()
+        $ssiProp = [scriptblock].GetProperty('SessionStateInternal', 36)
+        $lmProp = [scriptblock].GetProperty('LanguageMode', 36)
+
+        $null = $ssiProp.SetValue($sb, $ssiProp.GetValue($Factory))
+        $null = $lmProp.SetValue($sb, $lmProp.GetValue($Factory))
+
+        $pipeline = $Host.Runspace.GetType().GetMethod('GetCurrentlyRunningPipeline', 36).Invoke($Host.Runspace, @())
+        $stopper = $pipeline.GetType().GetProperty('Stopper', 36).GetValue($pipeline)
+        $syncRoot = $stopper.GetType().GetField('_syncRoot', 36).GetValue($stopper)
+
+        if ($null -eq $syncRoot) {
+            $PSCmdlet.WriteWarning(
+                'Do not press Ctrl + C, pipeline stops cannot be prevented in this version of PowerShell.')
+
+            $syncRoot = [object]::new()
+        }
+
+        $ref = [ref]$null
+        try {
+            $null = . $sb $ref
+            $isMissingDispose = $false
+            if ($null -eq $ref.Value -or -not $ref.Value.psobject.Methods['Dispose']) {
+                $isMissingDispose = $true
+                $exception = [PSInvalidOperationException]::new(
+                    'The factory script did not return an object with a public Dispose method.')
+
+                $PSCmdlet.WriteError(
+                    [ErrorRecord]::new(
+                        <# exception:     #> $exception,
+                        <# errorId:       #> 'ObjectNotDisposable',
+                        <# errorCategory: #> [ErrorCategory]::InvalidOperation,
+                        <# targetObject:  #> $ref.Value))
+            }
+
+            $variables = [psvariable[]][psvariable]::new('_', $ref.Value)
+            $arguments = [object[]]::new(1)
+            $arguments[0] = $ref.Value
+            try {
+                $Action.InvokeWithContext(@{}, $variables, $arguments)
+            } catch {
+                $PSCmdlet.WriteError($PSItem)
+            }
+        } finally {
+            [Threading.Monitor]::Enter($syncRoot)
+            try {
+                if ($null -ne $ref.Value -and -not $isMissingDispose) {
+                    $ref.Value.Dispose()
+                }
+            } finally {
+                [Threading.Monitor]::Exit($syncRoot)
+            }
+        }
+    }
+}
+
+$script:AssemblyResolutionTable = [Dictionary[ValueTuple[string, bool], ValueTuple[Assembly, ResolveEventHandler]]]::new()
+function Add-AssemblyBinding {
+    [CmdletBinding(DefaultParameterSetName = 'NameSet')]
+    param(
+        [Parameter(Mandatory, ParameterSetName = 'NameSet')]
+        [ValidateNotNullOrEmpty()]
+        [string] $Name,
+
+        [Parameter(Mandatory, ParameterSetName = 'LiteralNameSet')]
+        [ValidateNotNullOrEmpty()]
+        [string] $LiteralName,
+
+        [Parameter(Mandatory)]
+        [ValidateNotNull()]
+        [Alias('To')]
+        [Assembly] $ResolvedTo
+    )
+    begin {
+        if ($PSBoundParameters.ContainsKey((nameof{$LiteralName}))) {
+            $key = [ValueTuple]::Create($LiteralName, $true)
+            $scriptBlock = {
+                param($s, $e)
+                end {
+                    if ($e.Name -eq $LiteralName) {
+                        return $ResolvedTo
+                    }
+                }
+            }
+        } else {
+            $key = [ValueTuple]::Create($Name, $false)
+            $scriptBlock = {
+                param($s, $e)
+                end {
+                    if ($e.Name -like $Name) {
+                        return $ResolvedTo
+                    }
+                }
+            }
+        }
+
+        $existingValue = default([ValueTuple[Assembly, ResolveEventHandler]])
+        if ($script:AssemblyResolutionTable.TryGetValue($key, [ref] $existingValue)) {
+            if ($existingValue.Item1 -eq $ResolvedTo) {
+                return
+            }
+        }
+
+        $boundParameters = $PSBoundParameters
+        $delegate = & {
+            $LiteralName = $boundParameters[(nameof{$LiteralName})]
+            $Name = $boundParameters[(nameof{$Name})]
+            $ResolvedTo = $boundParameters[(nameof{$ResolvedTo})]
+            [ResolveEventHandler]$scriptBlock.GetNewClosure()
+        }
+
+        $script:AssemblyResolutionTable[$key] = [ValueTuple]::Create([Assembly]$ResolvedTo, $delegate)
+        [AppDomain]::CurrentDomain.add_AssemblyResolve($delegate)
+    }
+}
+
+function Get-AssemblyBinding {
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0)]
+        [SupportsWildcards()]
+        [ValidateNotNullOrEmpty()]
+        [string] $Name
+    )
+    begin {
+        $isNameSpecified = $PSBoundParameters.ContainsKey((nameof{$Name}))
+        foreach ($kvp in $script:AssemblyResolutionTable.GetEnumerator()) {
+            if ($isNameSpecified -and $kvp.Key.Item1 -notlike $Name) {
+                continue
+            }
+
+            # yield
+            [PSCustomObject]@{
+                PSTypeName = 'UtilityProfile.AssemblyBinding'
+                Name = $kvp.Key.Item1
+                IsLiteral = $kvp.Key.Item2
+                ResolvedAssembly = $kvp.Value.Item1
+            }
+        }
+    }
+}
+
+function Remove-AssemblyBinding {
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [PSTypeName('UtilityProfile.AssemblyBinding')]
+        [psobject] $InputObject
+    )
+    process {
+        if ($null -eq $InputObject) {
+            return
+        }
+
+        $script:AssemblyResolutionTable.Remove(
+            [ValueTuple]::Create($InputObject.Name, $InputObject.IsLiteral))
+    }
+}
+
+function Invoke-Loop {
+    [Alias('loop')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [ValidateNotNull()]
+        [scriptblock] $Body
+    )
+    begin {
+        class ReturnFinder : AstVisitor {
+            [bool] $FoundReturnStatement;
+
+            hidden ReturnFinder() { }
+
+            static [bool] ContainsReturn([Ast] $ast) {
+                $finder = [ReturnFinder]::new()
+                $ast.Visit($finder)
+                return $finder.FoundReturnStatement
+            }
+
+            [AstVisitAction] VisitReturnStatement([ReturnStatementAst] $returnStatementAst) {
+                $this.FoundReturnStatement = $true
+                return [AstVisitAction]::StopVisit
+            }
+        }
+
+        if ([ReturnFinder]::ContainsReturn($Body.Ast)) {
+            $exception = [PSArgumentException]::new(
+                'The body of this type of loop may not contain a "return" statement because it''s symantics cannot be implemented outside of the engine.')
+            $PSCmdlet.ThrowTerminatingError(
+                [ErrorRecord]::new(
+                    $exception,
+                    'LoopBodyContainsReturn',
+                    'InvalidArgument',
+                    $Body))
+            return
+        }
+    }
+    end {
+        $ps = $null
+        try {
+            $ps = [powershell]::Create('CurrentRunspace').
+                AddScript(
+                    { param([scriptblock] $Body) end { . $Body } },
+                    <# useLocalScope: #> $false).
+                AddParameter("Body", $Body)
+
+            $invokeSettings = [PSInvocationSettings]::new()
+            $invokeSettings.ExposeFlowControlExceptions = $true
+            $invokeSettings.Host = $Host
+            $invokeSettings.AddToHistory = $false
+
+            while ($true) {
+                try {
+                    # yield
+                    $ps.Invoke($null, $invokeSettings)
+                    foreach ($record in $ps.Streams.Error) {
+                        $PSCmdlet.WriteError($record)
+                    }
+
+                    $ps.Streams.ClearStreams()
+                } catch [ContinueException] {
+                    continue
+                } catch [BreakException] {
+                    break
+                } catch [TerminateException] {
+                    throw
+                } catch {
+                    $exception = $PSItem.Exception.InnerException
+                    if ($exception -is [IContainsErrorRecord]) {
+                        throw [ErrorRecord]::new(
+                            $exception.ErrorRecord,
+                            $exception)
+                    }
+
+                    throw [ErrorRecord]::new(
+                        $exception,
+                        $exception.GetType().Name,
+                        'NotSpecified',
+                        $null)
+                    return
+                }
+            }
+        } finally {
+            if ($null -ne $ps) {
+                $ps.Dispose()
+                $ps = $null
+            }
+        }
+    }
+}
+
+function Find-File {
+    <#
+        .SYNOPSIS
+            Quickly search the file system.
+
+        .DESCRIPTION
+            The Find-File function will search the file system for the specified
+            file or directory with better performance than using Get-ChildItem.
+
+        .PARAMETER Path
+            The path to search. If the "Filter" parameter is not specified, the
+            last path segment will be used as the filter. This parameter accepts
+            wildcards.
+
+        .PARAMETER LiteralPath
+            The path to search. If the "Filter" parameter is not specified, the
+            last path segment will be used as the filter. This parameter does not
+            accept wildcards.
+
+        .PARAMETER Filter
+            The pattern to search for. If not specified, the last path segment of
+            either the Path or LiteralPath parameters will be used as the filter.
+
+        .PARAMETER Directory
+            If specified, only directories will be returned. If specified with the
+            File parameter, neither parameter will take effect.
+
+        .PARAMETER File
+            If specified, only files will be returned. If specified with the Directory
+            parameter, neither parameter will take effect.
+
+        .PARAMETER Recurse
+            Specifies whether child folders should be included in the search.
+
+        .PARAMETER Depth
+            Specifies the maximum depth of child folders that should be included in
+            the search. If specified, the Recurse parameter is implied.
+
+        .EXAMPLE
+            PS> Find-File
+            Returns all files and directories in the current folder.
+
+        .EXAMPLE
+            PS> Find-File *application*
+            Returns any file or directory in the current folder whose name contains
+            the word "application".
+
+        .EXAMPLE
+            PS> Find-File C:\*.exe -Recurse -File
+            Finds all executable files on the C drive, including child folders.
+
+        .EXAMPLE
+            PS> Find-File *.exe -Recurse -File
+            Finds all executable files in the current folder, including child folders.
+
+        .EXAMPLE
+            PS> Find-File C:\ -Filter *.exe -Recurse -File
+            Finds all executable files on the C drive, including child folders.
+
+        .EXAMPLE
+            PS> Find-File C:\Windows -Filter etc -Recurse -Directory
+            Finds the "etc" folder in a nested folder within "C:\Windows".
+    #>
+    [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'ByPath')]
+    param(
+        [Parameter(Position = 0, ParameterSetName = 'ByPath')]
+        [ValidateNotNullOrEmpty()]
+        [SupportsWildcards()]
+        [string] $Path = '*',
+
+        [Parameter(Mandatory, ParameterSetName = 'ByLiteralPath')]
+        [ValidateNotNullOrEmpty()]
+        [string] $LiteralPath,
+
+        [Parameter(Position = 1, ParameterSetName = 'ByPath')]
+        [Parameter(Position = 0, ParameterSetName = 'ByLiteralPath')]
+        [ValidateNotNullOrEmpty()]
+        [SupportsWildcards()]
+        [string] $Filter,
+
+        [Parameter()]
+        [switch] $Directory,
+
+        [Parameter()]
+        [switch] $File,
+
+        [Parameter()]
+        [switch] $Recurse,
+
+        [Parameter()]
+        [ValidateRange(0, [int]::MaxValue)]
+        [int] $Depth = -1
+    )
+    begin {
+        class ItemToProcess {
+            [int] $Depth;
+
+            [string] $Path;
+
+            [ItemToProcess] CreateChild([string] $path) {
+                $result = [ItemToProcess]::new()
+                $result.Depth = $this.Depth + 1
+                $result.Path = $path
+                return $result
+            }
+        }
+
+        if ($PSBoundParameters.ContainsKey('LiteralPath')) {
+            $isLiteral = $true
+            $target = $LiteralPath
+        } else {
+            $isLiteral = $false
+            $target = $Path
+        }
+
+        $provider = $null
+        $target = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+            $target,
+            [ref] $provider,
+            [ref] $null)
+
+        if ($provider.Name -ne [Microsoft.PowerShell.Commands.FileSystemProvider]::ProviderName) {
+            $exception = [PSInvalidOperationException]::new(
+                'Only the FileSystem provider is supported by this function.')
+            $PSCmdlet.ThrowTerminatingError(
+                [ErrorRecord]::new(
+                    $exception,
+                    'InvalidProvider',
+                    [ErrorCategory]::InvalidArgument,
+                    $provider))
+        }
+
+        if (-not $PSBoundParameters.ContainsKey('Filter')) {
+            $Filter = $target | Split-Path -Leaf
+            $target = $target | Split-Path -Parent
+        }
+
+        if (-not $isLiteral) {
+            $target = Resolve-Path $target -ErrorAction Stop
+            if ($target -is [array]) {
+                $exception = [PSArgumentException]::new(
+                    'The base search path specified resolves to multiple directories.')
+                $PSCmdlet.ThrowTerminatingError(
+                    [ErrorRecord]::new(
+                        $exception,
+                        'MultipleDirectories',
+                        [ErrorCategory]::InvalidArgument,
+                        $target))
+            }
+
+            if ($target -is [PathInfo]) {
+                $target = $target.ProviderPath
+            }
+        }
+
+        $items = [Stack[ItemToProcess]]::new()
+        $items.Push([ItemToProcess]@{ Depth = 0; Path = $target })
+        $pattern = [WildcardPattern]::Get(
+            $Filter,
+            [WildcardOptions]'Compiled, IgnoreCase, CultureInvariant')
+
+        $shouldReturnDirectories = if ($PSBoundParameters.ContainsKey('Directory')) {
+            $Directory.IsPresent
+        } else {
+            -not $File.IsPresent
+        }
+
+        $shouldReturnFiles = if ($PSBoundParameters.ContainsKey('File')) {
+            $File.IsPresent
+        } else {
+            -not $Directory.IsPresent
+        }
+
+        if (-not ($shouldReturnDirectories -or $shouldReturnFiles)) {
+            return
+        }
+
+        if ($Recurse.IsPresent -and $Depth -eq -1) {
+            $Depth = [int]::MaxValue
+        }
+
+        $handleError = { param([PSCmdlet] $cmdlet, [ErrorRecord] $er) end {
+            if ($er.Exception -is [MethodInvocationException]) {
+                $cmdlet.WriteError(
+                    [ErrorRecord]::new(
+                        $er.Exception.InnerException,
+                        'FileSystemEnumerationError',
+                        [ErrorCategory]::NotSpecified,
+                        $er))
+
+                return
+            }
+
+            $cmdlet.WriteError($er)
+        }}
+    }
+    end {
+        if (-not ($shouldReturnDirectories -or $shouldReturnFiles)) {
+            return;
+        }
+
+        while ($items.Count -gt 0) {
+            $item = $items.Pop()
+            $canRecurse = $Depth -ne -1 -and $item.Depth -lt $Depth
+            try {
+                if ($shouldReturnDirectories -or $canRecurse) {
+                    foreach ($directoryPath in [Directory]::GetDirectories($item.Path)) {
+                        if ($shouldReturnDirectories -and $pattern.IsMatch([Path]::GetFileName($directoryPath))) {
+                            # yield
+                            $directoryPath
+                        }
+
+                        if ($canRecurse) {
+                            $items.Push($item.CreateChild($directoryPath))
+                        }
+                    }
+                }
+
+                if (-not $shouldReturnFiles) {
+                    continue
+                }
+
+                foreach ($filePath in [Directory]::GetFiles($item.Path)) {
+                    if ($pattern.IsMatch([Path]::GetFileName($filePath))) {
+                        # yield
+                        $filePath
+                    }
+                }
+            } catch {
+                & $handleError $PSCmdlet $PSItem
+            }
+        }
+    }
+}
+
+function Get-PathEntry {
+    [OutputType('UtilityProfile.PathEntry')]
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(Position = 0, ValueFromPipeline)]
+        [ValidateNotNullOrEmpty()]
+        [SupportsWildcards()]
+        [string] $Pattern,
+
+        [Parameter()]
+        [ValidateNotNull()]
+        [EnvironmentVariableTarget[]] $Scope
+    )
+    begin {
+        if (-not $PSBoundParameters.ContainsKey((nameof{$Scope}))) {
+            $Scope = [EnvironmentVariableTarget].GetEnumValues()
+        }
+
+        $pathEntries = foreach ($targetScope in $Scope) {
+            $path = [Environment]::GetEnvironmentVariable('PATH', $targetScope)
+            foreach ($entry in $path.Split([char][IO.Path]::PathSeparator, [StringSplitOptions]::RemoveEmptyEntries)) {
+                [PSCustomObject]@{
+                    PSTypeName = 'UtilityProfile.PathEntry'
+                    Scope = $targetScope
+                    Value = $entry
+                }
+            }
+        }
+
+        if (-not ($MyInvocation.ExpectingInput -or $PSBoundParameters.ContainsKey((nameof{$Pattern})))) {
+            if (-not $PSBoundParameters.ContainsKey((nameof{$Pattern}))) {
+                return $pathEntries
+            }
+
+            return $pathEntries.Where{
+                $value = $PSItem.Value
+                $Pattern.Where{ $value -like $PSItem }
+            }
+        }
+
+        $patterns = [HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    }
+    process {
+        if (-not ($MyInvocation.ExpectingInput -or $PSBoundParameters.ContainsKey((nameof{$Pattern})))) {
+            return
+        }
+
+        if ($PSBoundParameters.ContainsKey((nameof{$Pattern}))) {
+            $null = $patterns.Add($Pattern)
+        }
+    }
+    end {
+        if (-not ($MyInvocation.ExpectingInput -or $PSBoundParameters.ContainsKey((nameof{$Pattern})))) {
+            return
+        }
+
+        if ($patterns.Count -eq 0) {
+            return $pathEntries
+        }
+
+        return $pathEntries.Where{
+            $value = $PSItem.Value
+            $Pattern.Where{ $value -like $PSItem }
+        }
+    }
+}
+
+function Remove-PathEntry {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [PSTypeName('UtilityProfile.PathEntry')]
+        [ValidateNotNull()]
+        [psobject] $PathEntry
+    )
+    process {
+        $path = [Environment]::GetEnvironmentVariable(
+            'PATH',
+            $PathEntry.Scope)
+
+        $entries = $path.
+            Split([char][IO.Path]::PathSeparator, [StringSplitOptions]::RemoveEmptyEntries).
+            Where{ -not $PSItem.Equals($PathEntry.Value, [StringComparison]::Ordinal) }
+
+        $newPath = $entries -join [IO.Path]::PathSeparator
+        try {
+            [Environment]::SetEnvironmentVariable(
+                'PATH',
+                $newPath,
+                $PathEntry.Scope)
+        } catch [MethodInvocationException] {
+            $exception = $PSItem.Exception.InnerException
+            $PSCmdlet.WriteError(
+                [ErrorRecord]::new(
+                    $exception,
+                    'CannotSetPathAtScope',
+                    [ErrorCategory]::WriteError,
+                    $PathEntry))
+        }
+    }
+}
+
+function New-PathEntry {
+    [OutputType('UtilityProfile.PathEntry')]
+    [CmdletBinding(DefaultParameterSetName = 'ByPath', PositionalBinding = $false)]
+    param(
+        [Parameter(ValueFromPipeline, ValueFromPipelineByPropertyName, Mandatory, Position = 0, ParameterSetName = 'ByPath')]
+        [SupportsWildcards()]
+        [ValidateNotNullOrEmpty()]
+        [Alias('FullName')]
+        [string[]] $Path,
+
+        [Parameter(Mandatory, ParameterSetName = 'ByLiteralPath')]
+        [ValidateNotNullOrEmpty()]
+        [string] $LiteralPath,
+
+        [Parameter(Position = 1, ParameterSetName = 'ByPath')]
+        [Parameter(Position = 0, ParameterSetName = 'ByLiteralPath')]
+        [EnvironmentVariableTarget] $Scope = [EnvironmentVariableTarget]::Process
+    )
+    begin {
+        $comparer = if ($IsLinux) {
+            [StringComparer]::Ordinal
+        } else {
+            [StringComparer]::OrdinalIgnoreCase
+        }
+
+        $pathsToSet = [HashSet[string]]::new($comparer)
+        $pathsToSetOrdered = [List[string]]::new()
+        $existingEntries = [HashSet[string]]::new($comparer)
+        foreach ($entry in Get-PathEntry -Scope $Scope) {
+            $null = $existingEntries.Add($entry.Value)
+        }
+    }
+    process {
+        if ($PSBoundParameters.ContainsKey((nameof{$LiteralPath}))) {
+            $fullPath = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($LiteralPath)
+            if ($existingEntries.Contains($fullPath)) {
+                return
+            }
+
+            if ($pathsToSet.Add($fullPath)) {
+                $pathsToSetOrdered.Add($fullPath)
+            }
+
+            return
+        }
+
+        foreach ($singlePath in $Path) {
+            $resolvedPaths = $null
+            try {
+                $provider = $null
+                $resolvedPaths = $PSCmdlet.GetResolvedProviderPathFromPSPath(
+                    $singlePath,
+                    [ref] $provider)
+
+                if ($provider.Name -ne [FileSystemProvider]::ProviderName) {
+                    $PSCmdlet.WriteError(
+                        [ErrorRecord]::new(
+                            [PSArgumentException]::new('Path must be of the FileSystem provider.'),
+                            'PathNotFileSystem',
+                            [ErrorCategory]::InvalidArgument,
+                            $singlePath))
+                    continue
+                }
+            } catch [MethodInvocationException] {
+                $PSCmdlet.WriteError(
+                    [ErrorRecord]::new(
+                        $PSItem.Exception.InnerException,
+                        'CannotResolvePath',
+                        [ErrorCategory]::ObjectNotFound,
+                        $singlePath))
+                continue
+            }
+
+            $didFindDirectory = $false
+            foreach ($resolvedPath in $resolvedPaths) {
+                if (-not [IO.Directory]::Exists($resolvedPath)) {
+                    continue
+                }
+
+                $didFindDirectory = $true
+                if ($existingEntries.Contains($resolvedPath)) {
+                    continue
+                }
+
+                if ($pathsToSet.Add($resolvedPath)) {
+                    $pathsToSetOrdered.Add($resolvedPaths)
+                }
+            }
+
+            if ($didFindDirectory) {
+                continue
+            }
+
+            $exception = [ItemNotFoundException]::new(
+                'Unable to find a directory with the path "{0}"' -f $singlePath)
+
+            $PSCmdlet.WriteError(
+                [ErrorRecord]::new(
+                    $exception,
+                    'CannotResolvePath',
+                    [ErrorCategory]::ObjectNotFound,
+                    $singlePath))
+        }
+    }
+    end {
+        $rawEntries = Get-PathEntry -Scope $Scope |
+            Select-Object -ExpandProperty Value |
+            append { $pathsToSetOrdered }
+
+        $newPath = $rawEntries -join [IO.Path]::PathSeparator
+        try {
+            [Environment]::SetEnvironmentVariable(
+                'PATH',
+                $newPath,
+                $Scope)
+        } catch [MethodInvocationException] {
+            $exception = $PSItem.Exception.InnerException
+            $PSCmdlet.WriteError(
+                [ErrorRecord]::new(
+                    $exception,
+                    'CannotSetPathAtScope',
+                    [ErrorCategory]::WriteError,
+                    $PathEntry))
+            return
+        }
+
+        $pathsToSetOrdered.ForEach{
+            [PSCustomObject]@{
+                PSTypeName = 'UtilityProfile.PathEntry'
+                Scope = $Scope
+                Value = $PSItem
+            }
+        }
+    }
+}
+
+function Invoke-Parser {
+    [Alias('parse')]
+    [OutputType([System.Management.Automation.Language.Ast])]
+    [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'ByDefinition')]
+    param(
+        [Parameter(Position = 0, ValueFromPipeline, ParameterSetName = 'ByDefinition')]
+        [ValidateNotNullOrEmpty()]
+        [string] $Script,
+
+        [Parameter(ParameterSetName = 'ByDefinition')]
+        [ValidateNotNullOrEmpty()]
+        [string] $ClaimSourcePath,
+
+        [Parameter(Mandatory, ParameterSetName = 'ByPath')]
+        [ValidateNotNullOrEmpty()]
+        [SupportsWildcards()]
+        [string] $Path,
+
+        [Parameter(Mandatory, ParameterSetName = 'ByLiteralPath')]
+        [ValidateNotNullOrEmpty()]
+        [string] $LiteralPath
+    )
+    begin {
+        function processAst {
+            param($ast, $tokens, $errors)
+            end {
+                if ($errors) {
+                    $exception = [System.Management.Automation.ParseException]::new($errors)
+                    $PSCmdlet.WriteError(
+                        [System.Management.Automation.ErrorRecord]::new(
+                            $exception.ErrorRecord,
+                            $exception))
+                }
+
+                $ast.psobject.Properties.Add(
+                    [psnoteproperty]::new(
+                        'Tokens',
+                        $tokens))
+
+                $ast.psobject.Properties.Add(
+                    [psnoteproperty]::new(
+                        'Errors',
+                        $errors))
+
+                return $ast
+            }
+        }
+    }
+    process {
+        $ast = $tokens = $errors = $pathsToParse = $null
+        if ($PSCmdlet.ParameterSetName -eq 'ByDefinition') {
+            try {
+                if ($MyInvocation.BoundParameters.ContainsKey((nameof{$ClaimSourcePath}))) {
+                    $ast = [System.Management.Automation.Language.Parser]::ParseInput(
+                        $Script,
+                        $ClaimSourcePath,
+                        [ref] $tokens,
+                        [ref] $errors)
+
+                    return processAst $ast $tokens $errors
+                } else {
+                    $ast = [System.Management.Automation.Language.Parser]::ParseInput(
+                        $Script,
+                        [ref] $tokens,
+                        [ref] $errors)
+
+                    return processAst $ast $tokens $errors
+                }
+            } catch {
+                $baseException = $PSItem.Exception.InnerException
+                $exception = [System.Management.Automation.RuntimeException]::new(
+                    ('An unexpected exception was thrown while parsing: {0}' -f $baseException.Message),
+                    $baseException)
+
+                $PSCmdlet.ThrowTerminatingError(
+                    [System.Management.Automation.ErrorRecord]::new(
+                        $exception,
+                        'UncaughtParseException',
+                        [System.Management.Automation.ErrorCategory]::ParserError,
+                        $null))
+                return
+            }
+        }
+
+        $pathsToParse = $provider = $null
+        if ($PSCmdlet.ParameterSetName -eq 'ByPath') {
+            try {
+                $pathsToParse = $PSCmdlet.SessionState.Path.GetResolvedProviderPathFromPSPath(
+                    $Path,
+                    [ref] $provider)
+            } catch {
+                $PSCmdlet.WriteError(
+                    [System.Management.Automation.ErrorRecord]::new(
+                        $PSItem.Exception.InnerException.ErrorRecord,
+                        $PSItem.Exception.InnerException))
+                return
+            }
+        } else {
+            $pathsToParse = $PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+                $LiteralPath,
+                [ref] $provider,
+                [ref] $null)
+
+            if (-not [System.IO.File]::Exists($pathsToParse)) {
+                $exception = [System.Management.Automation.ItemNotFoundException]::new(
+                    "Cannot find path '{0}' because it does not exist." -f $LiteralPath)
+                $PSCmdlet.WriteError(
+                    [System.Management.Automation.ErrorRecord]::new(
+                        $exception,
+                        'PathNotFound',
+                        [System.Management.Automation.ErrorCategory]::ObjectNotFound,
+                        $LiteralPath))
+
+
+                return
+            }
+        }
+
+        if ($provider.Name -ne [Microsoft.PowerShell.Commands.FileSystemProvider]::ProviderName) {
+            $exception = [System.Management.Automation.PSArgumentException]::new(
+                'The specified path was not from the FileSystem provider.')
+            $PSCmdlet.WriteError(
+                [System.Management.Automation.ErrorRecord]::new(
+                    $exception,
+                    'PathNotFileSystem',
+                    [System.Management.Automation.ErrorCategory]::InvalidArgument,
+                    $null))
+
+            return
+        }
+
+        foreach ($pathToParse in $pathsToParse) {
+            try {
+                $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+                    $pathToParse,
+                    [ref] $tokens,
+                    [ref] $errors)
+
+                # yield
+                processAst $ast $tokens $errors
+            } catch {
+
+                $baseException = $PSItem.Exception.InnerException
+                $exception = [System.Management.Automation.RuntimeException]::new(
+                    ('An unexpected exception was thrown while parsing: {0}' -f $baseException.Message),
+                    $baseException)
+
+                $PSCmdlet.ThrowTerminatingError(
+                    [System.Management.Automation.ErrorRecord]::new(
+                        $exception,
+                        'UncaughtParseException',
+                        [System.Management.Automation.ErrorCategory]::ParserError,
+                        $null))
+            }
+        }
+    }
+}
+
+function New-TerminalHyperLink {
+    [Alias('link')]
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline, Mandatory, Position = 0)]
+        [ValidateNotNullOrEmpty()]
+        [uri] $Uri,
+
+        [Parameter(Position = 1)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Text
+    )
+    begin {
+        $e = [char]0x1B
+    }
+    process {
+        if ([string]::IsNullOrEmpty($Text)) {
+            $Text = $Uri.ToString()
+        }
+
+        return "$e]8;;$Uri$e\$Text$e]8;;$e\"
+    }
+}
+
+. "$PSScriptRoot\intrinsics.ps1"
+. "$PSScriptRoot\Format-MemberSignature.ps1"
+
+Export-ModuleMember -Function *-* -Alias * -Cmdlet *

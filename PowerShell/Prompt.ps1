@@ -310,6 +310,11 @@ function global:prompt {
     }
 
     $promptString = $promptBuilder.CreatePrompt($MyInvocation, $blocks)
+
+    if ($global:PSRL_INSERT_MODE) {
+        [Console]::Write($global:PSRL_INSERT_MODE)
+    }
+
     # Set-PSReadLineOption -PromptText $promptString
     return $promptString
 }

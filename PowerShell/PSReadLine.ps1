@@ -4,7 +4,20 @@
     }
 }
 
+Set-PSReadLineOption -ViModeIndicator Script -ViModeChangeHandler {
+    if ($args[0] -eq 'Command') {
+        [Console]::Write($global:PSRL_COMMAND_MODE)
+    } else {
+        [Console]::Write($global:PSRL_INSERT_MODE)
+    }
+}
+
+Import-Module PSLambda
+
 $esc = [char]0x1b
+$global:PSRL_INSERT_MODE = "${esc}[5 q"
+$global:PSRL_COMMAND_MODE = "${esc}[1 q"
+
 $bg = "${esc}[48;2;40;40;40m"
 $reset = "${esc}[27m${esc}[24m$bg"
 $underline = "${esc}[27m${esc}[4m$bg"
@@ -24,6 +37,10 @@ Set-PSReadLineOption -Colors @{
     Comment            = "${reset}${esc}[38;2;96;139;78m"     #608b4e
     Number             = "${reset}${esc}[38;2;147;206;168m"   #93cea8
     Error              = "${reset}${esc}[38;2;139;0;0m"       #8b0000
+}
+
+if ($PSStyle) {
+    $PSStyle.Formatting.TableHeader = $PSStyle.Foreground.FromRgb(0x7D, 0xC8, 0x64)
 }
 
 if ($__IsVSCode) {
@@ -62,3 +79,86 @@ if ($__IsWindows) {
 Set-PSReadLineKeyHandler -Chord UpArrow -Function HistorySearchBackward
 Set-PSReadLineKeyHandler -Chord DownArrow -Function HistorySearchForward
 Set-PSReadLineKeyHandler -Chord 'ctrl+w' -Function BackwardKillWord -ViMode Insert
+
+Set-PSReadLineKeyHandler -Chord i -BriefDescription Insert -ViMode Command -ScriptBlock {
+    [Microsoft.PowerShell.PSConsoleReadLine]::ViInsertMode()
+    [Console]::Write($global:PSRL_INSERT_MODE)
+}
+
+Set-PSReadLineKeyHandler `
+    -Chord ctrl+v `
+    -BriefDescription SmartPaste `
+    -Description (
+        'If pasting a valid path outside of a quoted string literal, surround ' +
+        'with quotes and escape. Otherwise paste normally.') `
+    -ScriptBlock {
+        param([Nullable[ConsoleKeyInfo]] $key, [object] $arg) end {
+            $psrl = [Microsoft.PowerShell.PSConsoleReadLine]
+            $clipText = Get-Clipboard
+            $shouldSkipQuoting = [string]::IsNullOrEmpty($clipText) -or
+                -not $clipText.Contains(' ') -or
+                -not (Test-Path $clipText) -or
+                # Use Regex.IsMatch to avoid changing global `$matches` variable.
+                [regex]::IsMatch($clipText, '^(?<quote>''|").*\k<quote>$')
+
+            if ($shouldSkipQuoting) {
+                $psrl::Paste($key, $arg)
+                return
+            }
+
+            $sbAst = $cursor = $null
+            $psrl::GetBufferState(
+                <# ast:         #> [ref] $sbAst,
+                <# tokens:      #> [ref] $null,
+                <# parseErrors: #> [ref] $null,
+                <# cursor:      #> [ref] $cursor)
+
+            $relatedAsts = $sbAst.FindAll(
+                {
+                    param([System.Management.Automation.Language.Ast] $a) end {
+                        return $a.Extent.StartOffset -le $cursor -and
+                            $a.Extent.EndOffset -ge $cursor
+                    }
+                },
+                <# searchNestedScriptBlocks: #> $true)
+
+            $startingPosition = @{
+                Descending = $true
+                Expression = { $PSItem.Extent.StartOffset }
+            }
+
+            $nodeLength = @{
+                Descending = $false
+                Expression = { $PSItem.Extent.EndOffset - $PSItem.Extent.StartOffset }
+            }
+
+            $parentCount = @{
+                Descending = $true
+                Expression = {
+                    $count = 0
+                    for ($node = $PSItem; $null -ne $node; $node = $node.Parent) {
+                        $count++
+                    }
+
+                    return $count
+                }
+            }
+
+            $closestAst = $relatedAsts |
+                Sort-Object $startingPosition, $nodeLength, $parentCount |
+                Select-Object -First 1
+
+            $isInQuotedString = $closestAst -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                $closestAst.StringConstantType -ne [System.Management.Automation.Language.StringConstantType]::BareWord
+
+            if ($isInQuotedString) {
+                $psrl::Paste($key, $arg)
+                return
+            }
+
+            # Use insert for the whole string instead of building with separate
+            # inserts and paste so PSRL considers it a single edit group for undos.
+            $clipText = "'" + ($clipText -replace "([\u2018\u2019\u201a\u201b'])", '$1$1') + "'"
+            $psrl::Insert($clipText)
+        }
+    }

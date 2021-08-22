@@ -125,7 +125,7 @@ function global:NewProxyTabExpansion2 {
 
             $boundParams['ast'] = [System.Management.Automation.Language.ScriptBlockAst]::new(
                 $boundParams['ast'].Extent,
-                [Language.UsingStatementAst[]]$usingStatements,
+                [System.Management.Automation.Language.UsingStatementAst[]]$usingStatements,
                 $boundParams['ast'].Attributes.
                     ForEach('Copy').
                     ForEach([System.Management.Automation.Language.AttributeAst]),

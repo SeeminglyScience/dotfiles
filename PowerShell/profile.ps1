@@ -1,3 +1,8 @@
+Import-Module Microsoft.PowerShell.Management
+Import-Module Microsoft.PowerShell.Utility
+Import-Module PSReadLine
+$env:EDITOR = 'nvim'
+
 # (Recommended items are referenced in some way in this profile)
 # Recommend modules:
 # - ClassExplorer
