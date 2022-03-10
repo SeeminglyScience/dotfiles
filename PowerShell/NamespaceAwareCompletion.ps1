@@ -150,21 +150,18 @@ function global:NewProxyTabExpansion2 {
             $steppablePipeline = $scriptCmd.GetSteppablePipeline()
             $steppablePipeline.Begin($PSCmdlet)
         } catch {
-            continue
         }
     }
     process {
         try {
             $steppablePipeline.Process($PSItem)
         } catch {
-            continue
         }
     }
     end {
         try {
             $steppablePipeline.End()
         } catch {
-            continue
         }
     }
     <#
