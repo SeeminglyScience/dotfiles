@@ -1,25 +1,86 @@
 // Place your settings in this file to overwrite the default settings
 {
-    "[il]": { "editor.snippetSuggestions": "top" },
+    "[markdown]": {
+        "editor.unicodeHighlight.ambiguousCharacters": false,
+        "editor.unicodeHighlight.invisibleCharacters": false,
+        "editor.wordWrap": "on",
+        "editor.quickSuggestions": false,
+    },
 
-    "telemetry.enableTelemetry": false,
-    "telemetry.enableCrashReporter": false,
+    "[powershell]": {
+        "debug.saveBeforeStart": "nonUntitledEditorsInActiveGroup",
+        "editor.semanticHighlighting.enabled": false,
+        "editor.wordSeparators": "`~!@#$%^&*()=+[{]}\\|;:'\",.<>/? ",
+    //     "editor.codeLens": false,
+    //     "editor.snippetSuggestions": "none",
+    //     "editor.wordBasedSuggestions": false,
+    },
+
+    "[xml]": {
+        "editor.defaultFormatter": "redhat.vscode-xml"
+    },
+
+    "[il]": {
+        "editor.snippetSuggestions": "top"
+    },
+
+    "[javascript]": {
+        "editor.defaultFormatter": "vscode.typescript-language-features"
+    },
+
+    "telemetry.telemetryLevel": "off",
+
+    "editor.formatOnType": true,
+    "editor.formatOnPaste": true,
+    "omnisharp.useModernNet": false,
+    "omnisharp.loggingLevel": "critical",
+    "omnisharp.enableEditorConfigSupport": true,
+    "omnisharp.enableImportCompletion": true,
+
+    "settingsSync.ignoredSettings": [
+        "projectManager.projectsLocation",
+    ],
+
+    "editor.semanticHighlighting.enabled": true,
+    "csharp.semanticHighlighting.enabled": true,
+
+    "editor.inlayHints.enabled": true,
+    "csharp.inlayHints.types.enabled": true,
+    "csharp.inlayHints.parameters.enabled": true,
+    "csharp.inlayHints.parameters.forLiteralParameters": true,
+    "csharp.inlayHints.parameters.suppressForParametersThatMatchMethodIntent": true,
+    "csharp.inlayHints.types.forImplicitVariableTypes": true,
+    "csharp.inlayHints.types.forLambdaParameterTypes": true,
+
+    // Default value messes with PowerLine symbols
+    "terminal.integrated.minimumContrastRatio": 1,
+
+    "powershell.scriptAnalysis.enable": false,
+    "powershell.codeFormatting.preset": "OTBS",
+    "powershell.codeFormatting.whitespaceAroundOperator": false,
+    "powershell.codeFormatting.newLineAfterCloseBrace": false,
+    "powershell.codeFormatting.autoCorrectAliases": true,
 
     "editor.snippetSuggestions": "none",
+    "editor.wordBasedSuggestions": false,
+    "editor.suggestFontSize": 15,
     "editor.suggestSelection": "first",
+    "editor.suggestOnTriggerCharacters": true,
+    "editor.suggest.preview": true,
+    "editor.inlineSuggest.enabled": true,
+
     "editor.parameterHints.cycle": true,
     "editor.smoothScrolling": true,
-    "editor.wordBasedSuggestions": false,
     "editor.cursorBlinking": "phase",
     "editor.renderWhitespace": "boundary",
     "editor.renderControlCharacters": true,
-    "editor.fontFamily": "Fira Code",
+    "editor.fontFamily": "CaskaydiaCove NF",
     "editor.fontLigatures": true,
     "editor.fontWeight": "400",
     "editor.minimap.enabled": true,
     "editor.dragAndDrop": true,
-    "editor.fontSize": 18,
-    "editor.rulers": [ 100, 115 ],
+    "editor.fontSize": 18.5,
+    "editor.rulers": [ 80, 100, 115 ],
     "files.trimTrailingWhitespace": true,
     "files.trimFinalNewlines": true,
     "files.insertFinalNewline": true,
@@ -28,42 +89,45 @@
     "files.associations": {
         "*.ps1xml": "xml",
         "*.wixproj": "xml",
+        "*.resx": "xml",
+        "dot_vsvimrc": "vimrc"
     },
 
+    "terminal.integrated.profiles.windows": {
+        "PowerShell": {
+            "icon": "terminal-powershell",
+            "path": "${env:ProgramFiles}\\PowerShell\\7-preview\\pwsh.exe",
+        },
+        "PowerShell-Stable": {
+            "icon": "terminal-powershell",
+            "path": "${env:ProgramFiles}\\PowerShell\\7\\pwsh.exe",
+        },
+        "WindowsPowerShell": {
+            "icon": "terminal-powershell",
+            "path": "${env:windir}\\System32\\WindowsPowerShell\\v1\\powershell.exe",
+        },
+    },
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
     "terminal.integrated.windowsEnableConpty": true,
     "terminal.integrated.cursorStyle": "block",
     "terminal.integrated.cursorBlinking": true,
-    "terminal.integrated.fontFamily": "FuraCode NF",
-    "terminal.integrated.fontSize": 18,
-    "terminal.integrated.commandsToSkipShell": [ "terminalInput.sendCustomInput" ],
-    "terminalInput.customInputs": {
-        "heartEmoji": "\u2665",
-        "checkMark": "\u2714",
-    },
+    "terminal.integrated.fontFamily": "CaskaydiaCove NF",
+    "powershell.scriptAnalysis.settingsPath": "PSScriptAnalyzerSettings.psd1",
+    "terminal.integrated.fontSize": 18.5,
 
     "omnisharp.enableRoslynAnalyzers": true,
     "omnisharp.projectLoadTimeout": 300,
-    "csharp.format.enable": false,
-    "csharpextensions.privateMemberPrefix": "_",
-    "csharpextensions.useThisForCtorAssignments": false,
-
-    "[powershell]": { "editor.codeLens": false },
-    "powershell.codeFormatting.preset": "OTBS",
-    "powershell.codeFormatting.whitespaceAroundOperator": false,
-    "powershell.codeFormatting.newLineAfterCloseBrace": false,
-    "powershell.developer.featureFlags": [ "PSReadLine" ],
+    "csharp.format.enable": true,
     "powershell.enableProfileLoading": true,
     "powershell.integratedConsole.focusConsoleOnExecute": false,
     "powershell.integratedConsole.showOnStartup": true,
-    "powershell.powerShellExePath": "C:\\Program Files\\PowerShell\\7-preview\\pwsh.exe",
-    // "powershell.developer.editorServicesLogLevel": "Verbose",
+    "powershell.developer.editorServicesLogLevel": "Diagnostic",
+    "powershell.promptToUpdatePowerShell": false,
 
     "projectManager.openInNewWindowWhenClickingInStatusBar": true,
     "projectManager.sortList": "Recent",
 
     "git.autofetch": true,
-    "gitlens.views.fileHistory.enabled": true,
-    "gitlens.views.lineHistory.enabled": true,
     "gitlens.keymap": "chorded",
     "gitlens.advanced.messages": {
         "suppressCommitHasNoPreviousCommitWarning": false,
@@ -72,13 +136,8 @@
         "suppressGitVersionWarning": false,
         "suppressLineUncommittedWarning": false,
         "suppressNoRepositoryWarning": false,
-        "suppressResultsExplorerNotice": false,
-        "suppressShowKeyBindingsNotice": true,
-        "suppressUpdateNotice": true,
-        "suppressWelcomeNotice": false
     },
 
-    "workbench.colorTheme": "Complete Dark",
     "workbench.activityBar.visible": true,
     "workbench.colorCustomizations": {
         "terminal.background": "#282828",
@@ -86,8 +145,6 @@
         "terminal.ansiGreen": "#026e2b",
         "terminal.ansiBrightGreen": "#039728",
     },
-
-    "window.zoomLevel": 0,
     "window.titleBarStyle": "custom",
 
     "debug.inlineValues": true,
@@ -95,10 +152,7 @@
     "extensions.ignoreRecommendations": false,
     "extensions.autoUpdate": true,
 
-    "search.location": "panel",
-
-    "java.configuration.checkProjectSettingsExclusions": false,
-    "[json]": { "editor.defaultFormatter": "HookyQR.beautify" },
+    "[json]": { "editor.defaultFormatter": "vscode.json-language-features" },
 
     // Uncomment and adjust if on a proxy and using XML schemas.
     // "xml.server.vmargs": "-noverify -Xmx64M -XX:+UseG1GC -XX:+UseStringDeduplication -Dhttp.proxyHost=proxyserverhere -Dhttp.proxyPort=portnumberhere -Dhttp.proxyUser=userhere -Dhttp.proxyPassword=passwordhere -Dhttps.proxyHost=proxyserverhere -Dhttps.proxyPort=portnumberhere",
@@ -173,10 +227,10 @@
         },
     },
 
-    "vim.neovimPath": "C:\\tools\\neovim\\Neovim\\bin\\nvim.exe",
+    "vim.useSystemClipboard": false,
+    "editor.tabCompletion": "on",
     "vim.enableNeovim": true,
-    "vim.useSystemClipboard": true,
-    "vim.substituteGlobalFlag": true,
+    "vim.gdefault": true,
     "vim.easymotion": true,
     "vim.leader": ",",
     "vim.history": 1000,
@@ -197,10 +251,6 @@
             "commands": [ "editor.action.peekDefinition" ]
         },
         {
-            "before": [ "g", "d" ],
-            "commands": [ "editor.action.revealDefinition" ]
-        },
-        {
             "before": [ ":" ],
             "after": [],
             "commands": [
@@ -215,17 +265,12 @@
             "after": [ ":" ]
         },
         {
-            "before": [
-                "g",
-                "r"
-            ],
+            "before": [ "g", "r" ],
             "after": [],
             "commands": [
                 {
                     "command": "PowerShell.InvokeRegisteredEditorCommand",
-                    "args": {
-                        "commandName": "Invoke-DocumentRefactor"
-                    },
+                    "args": { "commandName": "Invoke-DocumentRefactor" },
                     "when": "editorLangId == 'powershell'"
                 }
             ]
@@ -234,24 +279,56 @@
             "before": [ "g", "s" ],
             "after": [ "i" ],
             "commands": [ "editor.action.insertSnippet" ]
+        },
+        {
+            "before": [ "g", "f" ],
+            "after": [],
+            "commands": [
+                {
+                    "command": "editor.action.formatDocument",
+                }
+            ]
         }
     ],
     "vim.visualModeKeyBindingsNonRecursive": [
         {
-            "before": [
-                "g",
-                "r"
-            ],
+            "before": [ "g", "r" ],
             "after": [],
             "commands": [
                 {
                     "command": "PowerShell.InvokeRegisteredEditorCommand",
-                    "args": {
-                        "commandName": "Invoke-DocumentRefactor"
-                    },
+                    "args": { "commandName": "Invoke-DocumentRefactor" },
                     "when": "editorLangId == 'powershell'",
                 },
             ],
         },
+        {
+            "before": [ "g", "f" ],
+            "after": [],
+            "commands": [
+                {
+                    "command": "editor.action.formatSelection",
+                }
+            ]
+        }
     ],
+    "powershell.powerShellDefaultVersion": "PowerShell Preview (x64)",
+    "editor.accessibilitySupport": "off",
+    "markdownlint.customRules": [
+        "{docsmsft.docs-linting}/markdownlint-custom-rules/rules.js"
+    ],
+    "markdownlint.config": {
+        "MD025": {
+            "front_matter_title": ""
+        }
+    },
+    "yaml.schemas": {
+        "file:///toc.schema.json": "/toc\\.yml/i",
+        "https://json.schemastore.org/github-workflow": "/.github/workflows/**/*.yml"
+    },
+
+    "diffEditor.renderSideBySide": false,
+    "debug.allowBreakpointsEverywhere": true,
+    "redhat.telemetry.enabled": false,
+    "security.workspace.trust.untrustedFiles": "open",
 }

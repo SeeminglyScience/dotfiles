@@ -1,0 +1,13 @@
+README.md
+LICENSE
+admin_tasks.ps1
+install.ps1
+VSCode/
+
+{{- if .work }}
+AppData/Roaming/apex-config/
+{{- end -}}
+
+{{- if not .secrets }}
+scoop/persist/gpg/home/
+{{- end }}

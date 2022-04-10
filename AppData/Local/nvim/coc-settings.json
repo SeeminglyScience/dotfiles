@@ -1,0 +1,11 @@
+{
+	"powershell.integratedConsole.showOnStartup": false,
+  "powershell.powerShellExePath": "C:/Program Files/PowerShell/7-preview/pwsh.exe",
+  "languageserver": {
+    "efm": {
+      "command": "efm-langserver",
+      "args": [],
+      "filetypes": ["vim", "markdown"],
+    },
+  },
+}

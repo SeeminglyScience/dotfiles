@@ -1,0 +1,15 @@
+{{- $secrets := not (env "NO_SECRETS") -}}
+{{- $work := not (not (env "WORK")) -}}
+
+sourceDir: {{ .chezmoi.sourceDir }}
+
+data:
+  name: "Patrick Meinecke"
+  email: "seeminglyscience@gmail.com"
+  gpgkey: "1399631D3A499DBB"
+  work: {{ $work }}
+  secrets: {{ $secrets }}
+{{- if $secrets }}
+  bitwarden:
+    pgp_files: a2cc3139-a5c0-44bd-8549-ae6e00291c73
+{{- end }}

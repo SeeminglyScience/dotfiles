@@ -1,6 +1,54 @@
 // Place your key bindings in this file to overwrite the defaults
 [
     {
+        "key": "alt+n",
+        "command": "workbench.action.compareEditor.nextChange",
+        "when": "editorTextFocus && !suggestWidgetVisible && textCompareEditorActive",
+    },
+    {
+        "key": "alt+shift+n",
+        "command": "workbench.action.compareEditor.previousChange",
+        "when": "editorTextFocus && !suggestWidgetVisible && textCompareEditorActive",
+    },
+    {
+        "key": "alt+n",
+        "command": "workbench.action.editor.nextChange",
+        "when": "editorTextFocus && !suggestWidgetVisible && !textCompareEditorActive",
+    },
+    {
+        "key": "alt+shift+n",
+        "command": "workbench.action.editor.previousChange",
+        "when": "editorTextFocus && !suggestWidgetVisible && !textCompareEditorActive",
+    },
+    {
+        "key": "shift+enter",
+        "command": "editor.action.insertSnippet",
+        "args": {
+            "snippet": "🔸 `${1:XX}:` $2",
+            "langId": "markdown",
+            "name": "Dialog",
+        },
+        "when": "editorTextFocus && editorLangId == 'markdown' && vim.mode == 'Insert'"
+    },
+    {
+        "command": "workbench.action.findInFiles",
+        "args": {
+            "onlyOpenEditors": true,
+            "triggerSearch": true,
+        },
+        "key": "ctrl+0"
+    },
+    {
+        "command": "vscode-neovim.compositeEscape1",
+        "key": "j",
+        "when": "neovim.mode == insert && editorTextFocus",
+        "args": "j",
+    },
+    {
+        "command": "problems.action.openToSide",
+        "key": "F1",
+    },
+    {
         "key": "ctrl+shift+r",
         "command": "PowerShell.RestartSession",
         "when": "editorTextFocus && editorLangId == 'powershell'"
@@ -23,19 +71,19 @@
     {
         "key": "alt+shift+s",
         "command": "PowerShell.InvokeRegisteredEditorCommand",
-        "args": { "commandName": "ConvertToSplatExpression" },
+        "args": { "commandName": "ConvertTo-SplatExpression" },
         "when": "editorLangId == 'powershell'"
     },
     {
         "key": "alt+shift+n",
         "command": "PowerShell.InvokeRegisteredEditorCommand",
-        "args": { "commandName": "AddResolvedNamespace" },
+        "args": { "commandName": "Resolve-TypeExpression" },
         "when": "editorLangId == 'powershell'"
     },
     {
         "key": "alt+shift+m",
         "command": "PowerShell.InvokeRegisteredEditorCommand",
-        "args": { "commandName": "ExpandMemberExpression" },
+        "args": { "commandName": "Expand-MemberExpression" },
         "when": "editorLangId == 'powershell'"
     },
     {
@@ -55,17 +103,27 @@
     {
         "key": "ctrl+n",
         "command": "explorer.newFile",
-        "when": "explorerViewletVisible && filesExplorerFocus && !explorerResourceIsRoot && !inputFocus"
+        "when": "explorerViewletVisible && filesExplorerFocus && !explorerResourceIsRoot && !inputFocus && !inQuickOpen"
     },
     {
-        "key": "ctrl+n",
+        "key": "alt+n",
         "command": "workbench.action.quickOpenNavigateNext",
         "when": "inQuickOpen"
     },
     {
-        "key": "ctrl+p",
+        "key": "alt+p",
         "command": "workbench.action.quickOpenNavigatePrevious",
         "when": "inQuickOpen"
+    },
+    {
+        "key": "alt+n",
+        "command": "selectNextSuggestion",
+        "when": "editorTextFocus && suggestWidgetVisible"
+    },
+    {
+        "key": "alt+p",
+        "command": "selectPrevSuggestion",
+        "when": "editorTextFocus && suggestWidgetVisible"
     },
     {
         "key": "alt+n",
@@ -88,15 +146,73 @@
         "when": "listFocus && listHasSelectionOrFocus && !inputFocus"
     },
     {
-        "key": "shift+enter",
-        "command": "terminalInput.sendCustomInput",
-        "args": [ "heartEmoji" ],
+        "key": "ctrl+v",
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u2714" },
         "when": "terminalFocus"
     },
     {
-        "key": "ctrl+v",
+        "key": "shift+enter",
+        "command": "workbench.action.terminal.sendSequence",
+        "args": { "text": "\u2665" },
+        "when": "terminalFocus",
+    },
+    {
+        "key": "ctrl+shift+.",
+        "command": "editor.action.quickFix",
+    },
+    { "key": "ctrl+r l",              "command": "-npm-script.showOutput" },
+    { "key": "ctrl+r t",              "command": "-dotnet.test.runTestsInContext" },
+    { "key": "ctrl+r shift+r",        "command": "-npm-script.run" },
+    { "key": "ctrl+r ctrl+t",         "command": "-dotnet.test.debugTestsInContext" },
+    { "key": "ctrl+r r",              "command": "-npm-script.rerun-last-script" },
+    { "key": "ctrl+r shift+x",        "command": "-npm-script.terminate-script" },
+    { "key": "ctrl+r t",              "command": "-npm-script.test" },
+    { "key": "ctrl+`",          "command": "workbench.action.focusActiveEditorGroup",
+                                    "when": "!editorFocus" },
+    { "key": "ctrl+`",          "command": "workbench.action.terminal.focus",
+                                    "when": "!terminalFocus" },
+    { "key": "ctrl+shift+r",    "command": "PowerShell.RestartSession",
+                                    "when": "editorLangId == 'powershell'" },
+    { "key": "ctrl+shift+q",    "command": "workbench.action.toggleMaximizedPanel" },
+    { "key": "ctrl+shift+c",    "command": "PowerShell.ShowAdditionalCommands",
+                                    "when": "editorLangId == 'powershell'" },
+    { "key": "ctrl+shift+a",    "command": "extension.align",
+                                    "when": "editorTextFocus" },
+    {
+        "key": "ctrl+shift+r",
+        "command": "workbench.action.reloadWindow"
+    },
+    {
+        "key": "ctrl+shift+j",
+        "command": "PowerShell.InvokeRegisteredEditorCommand",
+        "args": [{ "commandName": "FixAllPSSA" }],
+        "when": "editorLangId == 'powershell'"
+    },
+    {
+        "key": "shift+alt+s",
+        "command": "PowerShell.InvokeRegisteredEditorCommand",
+        "args": { "commandName": "ConvertTo-SplatExpression" },
+        "when": "editorLangId == 'powershell'"
+    },
+    {
+        "key": "alt+n",
+        "command": "showNextParameterHint",
+        "when": "editorTextFocus && parameterHintsMultipleSignatures && parameterHintsVisible",
+    },
+    {
+        "key": "alt+p",
+        "command": "showPrevParameterHint",
+        "when": "editorTextFocus && parameterHintsMultipleSignatures && parameterHintsVisible",
+    },
+    {
+        "key": "shift+enter",
         "command": "terminalInput.sendCustomInput",
-        "args": [ "checkMark" ],
+        "args": [ "heartEmojiWithAlt" ],
         "when": "terminalFocus"
-    }
+    },
+    {
+        "key": "ctrl+.",
+        "command": "keyboard-quickfix.openQuickFix",
+    },
 ]

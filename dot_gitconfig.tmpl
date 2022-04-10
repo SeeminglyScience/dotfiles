@@ -1,0 +1,31 @@
+[init]
+    defaultbranch = main
+[user]
+    name = {{ .name }}
+    email = {{ .email }}
+    signingkey = {{ .gpgkey }}
+[core]
+    autocrlf = false
+[commit]
+    gpgsign = true
+[gpg]
+    program = {{ joinPath .chezmoi.homeDir "scoop/apps/gpg/current/bin/gpg.exe" | replace "\\" "/" | quote }}
+[alias]
+    unstage = reset HEAD
+    unst = reset HEAD
+    stage = add
+    st = add
+    unci = reset --soft HEAD^
+    undo-commit = reset --soft HEAD^
+    ci = commit
+    st = status
+    co = checkout
+    br = branch
+    last = log -1 HEAD
+    ls = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate # List commits in short form, with colors and branch/tag annotations.
+    ll = log --pretty=format:"%C(yellow)%h%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --numstat # List commits showing changed files
+    lds = log --pretty=format:"%C(yellow)%h\\ %ad%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --date=short # List oneline commits showing dates
+    ld = log --pretty=format:"%C(yellow)%h\\ %ad%Cred%d\\ %Creset%s%Cblue\\ [%cn]" --decorate --date=relative # List oneline commits showing relative dates
+    le = log --oneline --decorate #Default look for short git log
+    logtree = "log --graph --oneline --decorate --all" # same as above, but with graph
+    filelog = log -u # See all the commits related to a file, with the diff of the changes with git log -u

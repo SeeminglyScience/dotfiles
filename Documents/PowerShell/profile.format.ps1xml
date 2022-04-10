@@ -1,0 +1,397 @@
+<Configuration>
+    <SelectionSets>
+        <SelectionSet>
+            <Name>CustomGCI</Name>
+            <Types>
+                <TypeName>System.IO.FileSystemInfo</TypeName>
+                <TypeName>System.IO.FileInfo</TypeName>
+                <TypeName>System.IO.DirectoryInfo</TypeName>
+            </Types>
+        </SelectionSet>
+        <SelectionSet>
+            <Name>MemberInfo</Name>
+            <Types>
+                <TypeName>System.Reflection.MemberInfo</TypeName>
+                <TypeName>System.Reflection.MethodInfo</TypeName>
+                <TypeName>System.Reflection.ConstructorInfo</TypeName>
+                <TypeName>System.Reflection.FieldInfo</TypeName>
+                <TypeName>System.Reflection.EventInfo</TypeName>
+                <TypeName>System.Reflection.PropertyInfo</TypeName>
+            </Types>
+        </SelectionSet>
+    </SelectionSets>
+    <ViewDefinitions>
+        <View>
+            <Name>System.Threading.Tasks.Task</Name>
+            <ViewSelectedBy>
+                <TypeName>System.Threading.Tasks.Task</TypeName>
+            </ViewSelectedBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Width>4</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>20</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Result</Label>
+                    </TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <PropertyName>Id</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Status</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    # This stops tasks form blocking the pipeline simply so
+                                    # they can be formatted.
+                                    if (-not $_.IsCompleted) {
+                                        return '&lt;Task Incomplete&gt;'
+                                    }
+
+                                    try {
+                                        ,$_.GetAwaiter().GetResult()
+                                    } catch {
+                                        $_
+                                    }
+                                </ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>Utility.InstalledSoftware</Name>
+            <ViewSelectedBy>
+                <TypeName>Utility.InstalledSoftware</TypeName>
+            </ViewSelectedBy>
+            <GroupBy>
+                <PropertyName>Publisher</PropertyName>
+                <CustomControl>
+                    <CustomEntries>
+                        <CustomEntry>
+                            <CustomItem>
+                                <Frame>
+                                    <FirstLineIndent>4</FirstLineIndent>
+                                    <CustomItem>
+                                        <Text>Publisher: </Text>
+                                        <ExpressionBinding>
+                                            <PropertyName>Publisher</PropertyName>
+                                        </ExpressionBinding>
+                                    </CustomItem>
+                                </Frame>
+                            </CustomItem>
+                        </CustomEntry>
+                    </CustomEntries>
+                </CustomControl>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Label>x64</Label>
+                        <Width>3</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>14</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader />
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if ($_.Is64Bit) {
+                                        # nf-fa-check
+                                        [char]0xf00c
+                                    } else {
+                                        # nf-fa-close
+                                        [char]0xf00d
+                                    }
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Version</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Name</PropertyName>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>UtilityProfile.SpecialFolderInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>UtilityProfile.SpecialFolderInfo</TypeName>
+            </ViewSelectedBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Width>1</Width>
+                        <Label>E</Label>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>20</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader />
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if ($_.DoesExist) {
+                                        # nf-fa-check
+                                        [char]0xf00c
+                                    } else {
+                                        # nf-fa-close
+                                        [char]0xf00d
+                                    }
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Name</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Value</PropertyName>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>UtilityProfile.EnumValueInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>UtilityProfile.EnumValueInfo</TypeName>
+            </ViewSelectedBy>
+            <GroupBy>
+                <PropertyName>EnumType</PropertyName>
+                <CustomControl>
+                    <CustomEntries>
+                        <CustomEntry>
+                            <CustomItem>
+                                <Text>    Enum: </Text>
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        [Microsoft.PowerShell.ToStringCodeMethods]::Type($_.EnumType)
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                                <Text> (</Text>
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        [Microsoft.PowerShell.ToStringCodeMethods]::Type($_.EnumType.GetEnumUnderlyingType())
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                                <Text>)</Text>
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        if ([Reflection.CustomAttributeExtensions]::IsDefined($_.EnumType, [FlagsAttribute], $false)) {
+                                            ' {0}' -f ([char]0xF73F)
+                                        }
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                            </CustomItem>
+                        </CustomEntry>
+                    </CustomEntries>
+                </CustomControl>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Width>8</Width>
+                        <Alignment>Right</Alignment>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>25</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>10</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader />
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <PropertyName>Value</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Name</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Hex</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Bits</PropertyName>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>CustomGci</Name>
+            <ViewSelectedBy>
+                <SelectionSetName>CustomGCI</SelectionSetName>
+            </ViewSelectedBy>
+            <Controls>
+                <Control>
+                    <Name>FSIGroup</Name>
+                    <CustomControl>
+                        <CustomEntries>
+                            <CustomEntry>
+                                <CustomItem>
+                                    <Frame>
+                                        <LeftIndent>4</LeftIndent>
+                                        <CustomItem>
+                                            <Text>    Directory: </Text>
+                                            <ExpressionBinding>
+                                                <ScriptBlock>
+                                                    $_.PSParentPath.Replace('Microsoft.PowerShell.Core\FileSystem::', '')
+                                                </ScriptBlock>
+                                            </ExpressionBinding>
+                                            <NewLine />
+                                        </CustomItem>
+                                    </Frame>
+                                </CustomItem>
+                            </CustomEntry>
+                        </CustomEntries>
+                    </CustomControl>
+                </Control>
+            </Controls>
+            <GroupBy>
+                <PropertyName>PSParentPath</PropertyName>
+                <CustomControlName>FSIGroup</CustomControlName>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Alignment>Left</Alignment>
+                        <Label>Mode</Label>
+                        <Width>4</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Alignment>Right</Alignment>
+                        <Label>LastWriteTime</Label>
+                        <Width>26</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Alignment>Right</Alignment>
+                        <Label>Length</Label>
+                        <Width>10</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Alignment>Left</Alignment>
+                        <Label>Name</Label>
+                    </TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    $text = (&amp; {
+                                        $mode = $_.Mode
+                                        if ($mode[0] -eq 'l') {
+                                            # nf-fa-link
+                                            [char]0xf0c1
+                                        } elseif ($mode[0] -eq 'd') {
+                                            # nf-mdi-folder
+                                            [char]0xf74a
+                                        } else {
+                                            # nf-fa-file
+                                            [char]0xf15b
+                                        }
+
+                                        if ($mode[1] -eq 'a') {
+                                            # nf-mdi-archive
+                                            [char]0xf53b
+                                        }
+
+                                        if ($mode[2] -eq 'r') {
+                                            # nf-fa-lock
+                                            [char]0xf023
+                                        }
+
+                                        if ($mode[3] -eq 'h') {
+                                            # nf-mdi-file-hidden
+                                            [char]0xfb12
+                                        }
+
+                                        if ($mode[4] -eq 's') {
+                                            # nf-custom-windows
+                                            [char]0xe62a
+                                        }
+                                    }) -join ' '
+
+                                    return "$([char]27)[38;2;255;153;51m$text$([char]27)[0m"
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    [string]::Format(
+                                        "{2}{0,10}  {1,8}{3}",
+                                        $_.LastWriteTime.ToString("d"),
+                                        $_.LastWriteTime.ToString("t"),
+                                        "$([char]27)[38;2;102;153;255m",
+                                        "$([char]27)[0m")
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if ($_ -is [IO.DirectoryInfo]) {
+                                        return ''
+                                    }
+
+                                    if ($_.Length -gt 1GB) {
+                                        return '{1}{0:N2}GB{2}' -f (
+                                            ($_.Length / 1GB),
+                                            "$([char]27)[38;2;255;153;0m",
+                                            "$([char]27)[0m")
+                                    }
+
+                                    if ($_.Length -gt 1MB) {
+                                        return '{1}{0:N2}MB{2}' -f (
+                                            ($_.Length / 1MB),
+                                            "$([char]27)[38;2;255;255;0m",
+                                            "$([char]27)[0m")
+                                    }
+
+                                    if ($_.Length -gt 1KB) {
+                                        return '{1}{0:N2}KB{2}' -f (
+                                            ($_.Length / 1KB),
+                                            "$([char]27)[38;2;153;255;51m",
+                                            "$([char]27)[0m")
+                                    }
+
+                                    return '{1}{0:N2}B{2}' -f (
+                                        $_.Length,
+                                        "$([char]27)[38;2;0;255;51m",
+                                        "$([char]27)[0m")
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    '{1}{0}{2}' -f (
+                                        $_.Name,
+                                        "$([char]27)[38;2;102;204;255m",
+                                        "$([char]27)[0m")
+                                </ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+    </ViewDefinitions>
+</Configuration>
