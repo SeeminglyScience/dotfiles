@@ -47,7 +47,5 @@ if (-not $env:NO_SECRETS) {
     } while (-not $env:BW_SESSION)
 }
 
-chezmoi init https://seemingly.dev/dotfiles
-$sourcePath = chezmoi source-path
-
-chezmoi apply
+chezmoi init SeeminglyScience
+chezmoi apply -v
