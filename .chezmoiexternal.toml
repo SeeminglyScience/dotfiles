@@ -2,3 +2,11 @@
     type = "file"
     url = "https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim"
     refreshPeriod = "168h"
+
+["scoop/persist/flow-launcher/UserData/Plugins/Window Walker-2.0.2"]
+    type = "archive"
+    url = "https://github.com/taooceros/Flow.Plugin.WindowWalker/releases/download/v2.0.2/WindowWalker-2.0.2.zip"
+
+["scoop/persist/flow-launcher/UserData/Plugins/Everything-1.7.2"]
+    type = "archive"
+    url = "https://github.com/Flow-Launcher/Flow.Launcher.Plugin.Everything/releases/download/v1.7.2/Flow.Launcher.Plugin.Everything.zip"

@@ -29,11 +29,15 @@ begin {
     }
 }
 end {
+    scoop bucket add extras
     MaybeInstallScoopApp bat
     MaybeInstallScoopApp less
     MaybeInstallScoopApp gh
     MaybeInstallScoopApp gpg
     MaybeInstallScoopApp 7zip 7z
+    MaybeInstallScoopApp wsl-ssh-pageant
+    MaybeInstallScoopApp python
+    scoop install flow-launcher
 
     if ([WindowsIdentity]::GetCurrent().Owner.IsWellKnown([WellKnownSidType]::BuiltinAdministratorsSid)) {
         & "$PSScriptRoot\admin_tasks.ps1"
@@ -46,6 +50,18 @@ end {
     }
 
     MaybeInstallScoopApp bitwarden-cli bw
+
+    $env = @{
+        'SSH_AUTH_SOCK' = '\\.\pipe\ssh-pageant'
+        'GIT_SSH' = 'C:\Windows\System32\OpenSSH\ssh.exe'
+        'LESS' = '--quiet --raw-control-chars --quit-on-intr --ignore-case --prompt :'
+        'LESSCHARSET' = 'utf-8'
+        'CLASS_EXPLORER_TRUE_CHARACTER' = [char]0x2713 # check mark
+    }
+
+    foreach ($kvp in $env.GetEnumerator()) {
+        [Environment]::SetEnvironmentVariable($kvp.Name, $kvp.Value, [EnvironmentVariableTarget]::User)
+    }
 
     & "$env:ProgramFiles\PowerShell\7\pwsh.exe" -NoProfile {
         if ((Import-Module PowerShellGet -PassThru).Version.Major -ge 3) {

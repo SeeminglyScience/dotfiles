@@ -5108,6 +5108,120 @@ function Unlock-Bitwarden {
     }
 }
 
+function Update-LocalRepo {
+    [Alias('gup')]
+    [CmdletBinding()]
+    param()
+    end {
+        $branch = git rev-parse --abbrev-ref HEAD
+        $yesToAll = $false
+        $noToAll = $false
+        if ($branch -notin 'main', 'master') {
+            $continue = $PSCmdlet.ShouldContinue(
+                "You are on the branch '$branch' which is not the default, continue?",
+                'Confirm',
+                [ref] $yesToAll,
+                [ref] $noToAll)
+
+            if (-not $continue) {
+                return
+            }
+        }
+
+        $continue = $PSCmdlet.ShouldContinue(
+            "You are about to run:
+
+git fetch upstream $branch
+git merge upstream/$branch
+git push
+
+Continue?",
+            "Confirm",
+            [ref] $yesToAll,
+            [ref] $noToAll)
+
+        if (-not $continue) {
+            return
+        }
+
+        git fetch upstream $branch
+        if ($LASTEXITCODE) {
+            throw [Win32Exception]::new($LASTEXITCODE)
+        }
+
+        git merge upstream/$branch
+        if ($LASTEXITCODE) {
+            throw [Win32Exception]::new($LASTEXITCODE)
+        }
+
+        git push
+        if ($LASTEXITCODE) {
+            throw [Win32Exception]::new($LASTEXITCODE)
+        }
+    }
+}
+
+function Push-WithSetOrigin {
+    [Alias('gpush')]
+    [CmdletBinding()]
+    param()
+    end {
+        $existingOrigin = git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2> $null
+        if ($existingOrigin) {
+            git push
+            return
+        }
+
+        git push -u (git branch --show-current)
+    }
+}
+
+function Get-ImplementedInterface {
+    [Alias('gii')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory, ValueFromPipeline)]
+        [ValidateNotNull()]
+        [type] $Type
+    )
+    process {
+        $Type.GetInterfaces()
+    }
+}
+
+function New-ExpressionParameter {
+    [Alias('ep')]
+    [CmdletBinding()]
+    param(
+        [ArgumentCompleter([ClassExplorer.TypeFullNameArgumentCompleter])]
+        [Parameter(ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        [type] $Type = [object],
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [string] $Name
+    )
+    process {
+        if ($Name) {
+            return [Expression]::Parameter($Type, $Name)
+        }
+
+        return [Expression]::Parameter($Type)
+    }
+}
+
+function New-ExpressionLabel {
+    [Alias('el')]
+    [CmdletBinding()]
+    param(
+        [ArgumentCompleter([ClassExplorer.TypeFullNameArgumentCompleter])]
+        [Parameter(ValueFromPipeline, ValueFromPipelineByPropertyName)]
+        [type] $Type = [object]
+    )
+    process {
+        return [Expression]::Label($Type)
+    }
+}
+
 . "$PSScriptRoot\intrinsics.ps1"
 
 Export-ModuleMember -Function *-*, compile -Alias * -Cmdlet *

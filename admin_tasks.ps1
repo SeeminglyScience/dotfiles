@@ -60,6 +60,16 @@ end {
     $null = REG ADD "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
 
 
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
+
+    $wslSshPageant = "$env:USERPROFILE\scoop\apps\wsl-ssh-pageant\current\wsl-ssh-pageant-gui.exe"
+    $action = New-ScheduledTaskAction -Execute $wslSshPageant -Argument '--systray --winssh ssh-pageant'
+    New-ScheduledTask -Action $action -Trigger $trigger | Register-ScheduledTask 'Launch wsl-ssh-pageant' | Out-Null
+
+    $gpgconf = "$env:USERPROFILE\scoop\apps\gpg\current\bin\gpgconf.exe"
+    $action = New-ScheduledTaskAction -Execute $gpgconf -Argument '--launch gpg-agent'
+    New-ScheduledTask -Action $action -Trigger $trigger | Register-ScheduledTask 'Launch gpg-agent' | Out-Null
+
     $oldProtocol = [System.Net.ServicePointManager]::SecurityProtocol
     $wc = $null
     try {

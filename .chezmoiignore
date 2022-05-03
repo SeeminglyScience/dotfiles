@@ -3,6 +3,7 @@ LICENSE
 admin_tasks.ps1
 install.ps1
 VSCode/
+.vscode/
 
 {{- if .work }}
 AppData/Roaming/apex-config/
