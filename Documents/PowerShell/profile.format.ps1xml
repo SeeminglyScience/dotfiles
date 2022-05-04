@@ -183,13 +183,13 @@
                                 <Text>    Enum: </Text>
                                 <ExpressionBinding>
                                     <ScriptBlock>
-                                        [Microsoft.PowerShell.ToStringCodeMethods]::Type($_.EnumType)
+                                        [ClassExplorer.Internal._Format]::Type($_.EnumType)
                                     </ScriptBlock>
                                 </ExpressionBinding>
                                 <Text> (</Text>
                                 <ExpressionBinding>
                                     <ScriptBlock>
-                                        [Microsoft.PowerShell.ToStringCodeMethods]::Type($_.EnumType.GetEnumUnderlyingType())
+                                        [ClassExplorer.Internal._Format]::Type($_.EnumType.GetEnumUnderlyingType())
                                     </ScriptBlock>
                                 </ExpressionBinding>
                                 <Text>)</Text>
@@ -210,29 +210,42 @@
                     <TableColumnHeader>
                         <Width>8</Width>
                         <Alignment>Right</Alignment>
+                        <Label>Value</Label>
                     </TableColumnHeader>
                     <TableColumnHeader>
                         <Width>25</Width>
+                        <Label>Name</Label>
                     </TableColumnHeader>
                     <TableColumnHeader>
                         <Width>10</Width>
+                        <Label>Hex</Label>
                     </TableColumnHeader>
-                    <TableColumnHeader />
+                    <TableColumnHeader>
+                        <Label>Bits</Label>
+                    </TableColumnHeader>
                 </TableHeaders>
                 <TableRowEntries>
                     <TableRowEntry>
                         <TableColumnItems>
                             <TableColumnItem>
-                                <PropertyName>Value</PropertyName>
+                                <ScriptBlock>
+                                    [ClassExplorer.Internal._Format]::Number($_.Value, 9)
+                                </ScriptBlock>
                             </TableColumnItem>
                             <TableColumnItem>
-                                <PropertyName>Name</PropertyName>
+                                <ScriptBlock>
+                                    [ClassExplorer.Internal._Format]::MemberName($_.Name, 25)
+                                </ScriptBlock>
                             </TableColumnItem>
                             <TableColumnItem>
-                                <PropertyName>Hex</PropertyName>
+                                <ScriptBlock>
+                                    [ClassExplorer.Internal._Format]::Number($_.Hex, 10)
+                                </ScriptBlock>
                             </TableColumnItem>
                             <TableColumnItem>
-                                <PropertyName>Bits</PropertyName>
+                                <ScriptBlock>
+                                    [ClassExplorer.Internal._Format]::Number($_.Bits, [Console]::BufferWidth - 8 - 25 - 10 - 3)
+                                </ScriptBlock>
                             </TableColumnItem>
                         </TableColumnItems>
                     </TableRowEntry>

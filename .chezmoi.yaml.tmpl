@@ -3,6 +3,13 @@
 
 sourceDir: {{ .chezmoi.sourceDir }}
 
+merge:
+  command: "nvim"
+  args:
+    - -d
+    - "{{ "{{ .Destination }}" }}"
+    - "{{ "{{ .Source }}" }}"
+    - "{{ "{{ .Target }}" }}"
 data:
   name: "Patrick Meinecke"
   email: "seeminglyscience@gmail.com"
