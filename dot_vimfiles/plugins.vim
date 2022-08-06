@@ -23,5 +23,7 @@ Plug 'dkarter/bullets.vim'
 Plug 'Raimondi/delimitMate'
 Plug 'terryma/vim-multiple-cursors'
 Plug 'mattn/efm-langserver'
+Plug 'kana/vim-textobj-user'
+Plug 'kana/vim-textobj-entire'
 call plug#end()
 
