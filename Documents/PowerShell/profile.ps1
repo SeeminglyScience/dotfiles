@@ -1,6 +1,11 @@
-Import-Module Microsoft.PowerShell.Management
-Import-Module Microsoft.PowerShell.Utility
-Import-Module PSReadLine
+Set-StrictMode -Off
+Import-Module Microsoft.PowerShell.Management -ErrorAction Ignore -WarningAction Ignore
+Import-Module Microsoft.PowerShell.Utility -ErrorAction Ignore -WarningAction Ignore
+try {
+    Import-Module PSReadLine -ErrorAction Ignore
+} catch {
+}
+
 $env:EDITOR = 'nvim'
 
 $OutputEncoding =
@@ -165,17 +170,20 @@ $PSDefaultParameterValues['Find-Type:ResolutionMap'] = $PSDefaultParameterValues
     & $PSScriptRoot\PSReadLine.ps1
     & $PSScriptRoot\SetTypeCache.ps1
 
-    # Editor intellisense should only care about using statements in the current file,
-    # so don't enable namespace aware completion if we're in the integrated console.
-    if (-not $psEditor) {
-        & $PSScriptRoot\NamespaceAwareCompletion.ps1
+    if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
+        & $PSScriptRoot\CompletionExtensions.ps1
+        # & $PSScriptRoot\LinqETS.ps1
+    }
+
+    if ($psEditor) {
+        & "$PSScriptRoot\EditorCommands.ps1"
     }
 
     & $PSScriptRoot\Prompt.ps1
     Update-TypeData -PrependPath "$PSScriptRoot\profile.types.ps1xml"
     Update-FormatData -PrependPath "$PSScriptRoot\profile.format.ps1xml"
 
-    if (($PWD.ProviderPath | Split-Path -Leaf) -ne 'ClassExplorer') {
+    if ($PWD.ProviderPath -and ($PWD.ProviderPath | Split-Path -Leaf) -ne 'ClassExplorer') {
         Import-Module -Global -Name ClassExplorer -ErrorAction Ignore
     }
 

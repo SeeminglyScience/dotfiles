@@ -1,3 +1,10 @@
+if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
+    Import-Module CompletionPredictor -Global
+    Set-PSReadLineOption -PredictionSource HistoryAndPlugin -PredictionViewStyle ListView
+} else {
+    Set-PSReadLineOption -PredictionSource History -PredictionViewStyle ListView
+}
+
 & {
     if ($importPSWriteLine = Get-Command Import-PSWriteline -ErrorAction Ignore) {
         & $importPSWriteLine -ViMode
@@ -36,7 +43,7 @@ $global:PSRL_COMMAND_MODE = "${esc}[1 q"
 $bg = "${esc}[48;2;40;40;40m"
 $reset = "${esc}[27m${esc}[24m$bg"
 $underline = "${esc}[27m${esc}[4m$bg"
-Set-PSReadLineOption -Colors @{
+$colors = @{
     Member             = "${reset}${esc}[38;2;228;228;228m"   #e4e4e4
     Parameter          = "${reset}${esc}[38;2;228;228;228m"   #e4e4e4
     Default            = "${reset}${esc}[38;2;228;228;228m"   #e4e4e4
@@ -44,8 +51,10 @@ Set-PSReadLineOption -Colors @{
     Operator           = "${reset}${esc}[38;2;197;197;197m"   #c5c5c5
     Keyword            = "${reset}${esc}[38;2;197;134;192m"   #c586c0
     Command            = "${reset}${esc}[38;2;220;220;170m"   #dcdcaa
-    Emphasis           = "${underline}${esc}[48;2;38;79;120m" #264f78
+    # Emphasis           = "${underline}${esc}[48;2;38;79;120m" #264f78
+    # Emphasis           = "${reset}${underline}${esc}[48;2;18;59;100m"             #264f78
     Selection          = "${reset}${esc}[48;2;38;79;120m"     #264f78
+    Emphasis           = "${reset}${esc}[48;5;238m"
     Type               = "${reset}${esc}[38;2;78;201;176m"    #4ec9b0
     Variable           = "${reset}${esc}[38;2;124;220;254m"   #7cdcfe
     String             = "${reset}${esc}[38;2;206;145;120m"   #ce9178
@@ -54,15 +63,12 @@ Set-PSReadLineOption -Colors @{
     Error              = "${reset}${esc}[38;2;139;0;0m"       #8b0000
 }
 
+if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
+    $colors['ListPrediction'] = "${reset}${esc}[38;2;78;201;176m"    #4ec9b0
+}
+
+Set-PSReadLineOption -Colors $colors
 if ($PSStyle) {
-    # $resetField = $PSStyle.GetType().GetField(
-    #     '<Reset>k__BackingField',
-    #     [System.Reflection.BindingFlags]::NonPublic -bor [System.Reflection.BindingFlags]::Instance)
-
-    # if ($null -ne $resetField) {
-    #     $resetField.SetValue($PSStyle, $reset)
-    # }
-
     $PSStyle.Formatting.TableHeader = $PSStyle.Foreground.FromRgb(0x7D, 0xC8, 0x64)
 }
 
@@ -90,7 +96,6 @@ if ($__IsVSCode -or -not $__IsWindows) {
     Set-PSReadLineKeyHandler -Chord "ctrl+@" -Function PossibleCompletions -ViMode Insert
     Set-PSReadLineKeyHandler -Chord 'ctrl+h' -Function BackwardKillWord -ViMode Insert
 }
-
 
 if ($__IsWindows) {
     Set-PSReadLineKeyHandler -Chord PageDown -Function ScrollDisplayDown

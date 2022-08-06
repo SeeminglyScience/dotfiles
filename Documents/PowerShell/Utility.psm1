@@ -579,7 +579,7 @@ function Install-Shim {
 
 
 function Set-AndPass {
-    [Alias('p')]
+    [Alias('sap')]
     [OutputType([psobject])]
     [CmdletBinding(PositionalBinding = $false)]
     param(
@@ -663,13 +663,24 @@ function Set-AndPass {
     }
 }
 
+$_globalSessionState = $null
+
 function Get-GlobalSessionState {
     [CmdletBinding()]
     param()
     end {
-        $npi = [BindingFlags]'NonPublic, Instance'
+        $existing = $script:_globalSessionState
+        if ($null -ne $existing) {
+            return $existing
+        }
+
+        $npi = [BindingFlags]::NonPublic -bor 'Instance'
         $context = [EngineIntrinsics].GetField('_context', $npi).GetValue($ExecutionContext)
-        return $context.GetType().GetProperty('TopLevelSessionState', $npi).GetValue($context)
+        $ssi = $context.GetType().GetProperty('TopLevelSessionState', $npi).GetValue($context)
+        $publicSessionState = $ssi.GetType().GetProperty('PublicSessionState', $npi).GetValue($ssi)
+        $stateHolder = [psmoduleinfo]::new($false)
+        $stateHolder.SessionState = $publicSessionState
+        return $script:_globalSessionState = $stateHolder
     }
 }
 
@@ -1898,7 +1909,6 @@ function Join-Before {
 }
 
 function Get-BaseException {
-    [Alias('e')]
     [CmdletBinding(PositionalBinding = $false)]
     param(
         [Parameter(ValueFromPipeline)]
@@ -5172,7 +5182,7 @@ function Push-WithSetOrigin {
             return
         }
 
-        git push -u (git branch --show-current)
+        git push -u origin (git branch --show-current)
     }
 }
 
@@ -5220,6 +5230,444 @@ function New-ExpressionLabel {
     process {
         return [Expression]::Label($Type)
     }
+}
+
+$script:ProjectsPath = $env:PROJECTS_PATH | ?? { 'C:\Projects' }
+
+$script:LocationAliases = @{
+    'Captures' = '~\Videos\Captures'
+    'ps' = '~\Documents\PowerShell'
+    'gpg' = '~\scoop\persist\gpg\home'
+    'chez' = '~\.local\share\chezmoi'
+    'pwsh' = "$script:ProjectsPath\PowerShell"
+    'pses' = "$script:ProjectsPath\PowerShellEditorServices"
+    'ce' = "$script:ProjectsPath\ClassExplorer"
+    'dl' = '~\Downloads'
+    'doc' = '~\Documents'
+    'vim' = '~\.vimfiles'
+}
+
+function Resolve-PathAlias {
+    [Alias('repa')]
+    [OutputType([string])]
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string] $Name
+    )
+    process {
+        $projectsPath = $script:ProjectsPath
+        if (-not $Name -and -not $MyInvocation.ExpectingInput) {
+            return $projectsPath
+        }
+
+        if ($Name -in 'other', 'o') {
+            $providerPath = $PSCmdlet.SessionState.Path.CurrentFileSystemLocation.ProviderPath
+            $directory = [Path]::GetDirectoryName($providerPath)
+            $leaf = [Path]::GetFileName($providerPath)
+            if ($leaf -eq 'PowerShellEditorServices') {
+                return Join-Path $directory -ChildPath 'vscode-powershell'
+            }
+
+            return Join-Path $projectsPath -ChildPath 'PowerShellEditorServices'
+        }
+
+        $locationAliases = $script:LocationAliases
+        $first, $rest = $Name -split '[\\/]'
+        if ($resolvedAlias = $locationAliases[$first]) {
+            $resolvedPath = $resolvedAlias
+            if ($rest) {
+                $resolvedPath = [Path]::Combine(
+                    $resolvedAlias,
+                    $rest -join [Path]::DirectorySeparatorChar)
+            }
+
+            return $resolvedPath
+        }
+
+        return Join-Path $projectsPath -ChildPath $Name
+    }
+}
+
+function Set-LocationPlus {
+    [Alias('p')]
+    [OutputType([void])]
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [string] $Name,
+
+        [Parameter()]
+        [switch] $PassThru
+    )
+    process {
+        $resolvedLocation = Resolve-PathAlias $Name
+        try {
+            $location = $PSCmdlet.SessionState.Path.SetLocation($resolvedLocation)
+        } catch {
+            $PSCmdlet.WriteError(
+                [ErrorRecord]::new(
+                    [ItemNotFoundException]::new(
+                        $PSItem.Exception.InnerException.Message,
+                        $PSItem.Exception),
+                    'PathNotFound',
+                    [ErrorCategory]::ObjectNotFound,
+                    $resolvedLocation))
+
+            return
+        }
+
+        if ($PassThru) {
+            return $location
+        }
+    }
+}
+
+function Edit-FilePlus {
+    [Alias('pvim')]
+    [OutputType([void])]
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string] $Name
+    )
+    end {
+        $resolvedLocation = Resolve-PathAlias $Name
+        $pipe = { & $env:EDITOR $resolvedLocation }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+        $pipe.Begin($PSCmdlet)
+        $pipe.Process($null)
+        $pipe.End()
+    }
+}
+
+function Out-ErrorPaging {
+    [Alias('e')]
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(Position = 0)]
+        [int] $Newest,
+
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject
+    )
+    begin {
+        $pipe = { Get-Error @PSBoundParameters | less --quit-if-one-screen }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+        $old = $PSStyle.OutputRendering
+        try {
+            $PSStyle.OutputRendering = 'Ansi'
+            $pipe.Begin($PSCmdlet)
+        } finally {
+            $PSStyle.OutputRendering = $old
+        }
+    }
+    process {
+        $old = $PSStyle.OutputRendering
+        try {
+            $PSStyle.OutputRendering = 'Ansi'
+            $pipe.Process($PSItem)
+        } finally {
+            $PSStyle.OutputRendering = $old
+        }
+    }
+    end {
+        $old = $PSStyle.OutputRendering
+        try {
+            $PSStyle.OutputRendering = 'Ansi'
+            $pipe.End()
+        } finally {
+            $PSStyle.OutputRendering = $old
+        }
+    }
+}
+
+${function:Out-ErrorPaging} = ${function:Out-ErrorPaging}.Ast.Body.GetScriptBlock()
+
+function Out-Paging {
+    [Alias('op')]
+    [CmdletBinding(PositionalBinding = $false)]
+    [OutputType([string])]
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]] $ArgumentList,
+
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject
+    )
+    begin {
+        $pipe = { Out-AnsiFormatting -Stream | less @ArgumentList }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+        $pipe.Begin($PSCmdlet)
+    }
+    process {
+        $pipe.Process($PSItem)
+    }
+    end {
+        $pipe.End()
+    }
+}
+
+function Out-AnsiFormatting {
+    [Alias('oaf')]
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject,
+
+        [Parameter(Position = 0)]
+        [scriptblock] $Pipeline = { Out-String @BoundParameters },
+
+        [Parameter(Position = 1)]
+        [IDictionary] $BoundParameters = @{},
+
+        [Parameter()]
+        [Alias('s')]
+        [switch] $Stream
+    )
+    begin {
+        $pipe = $null
+        try {
+            if ($Stream) {
+                $BoundParameters['Stream'] = $Stream
+            }
+
+            if ($InputObject) {
+                $BoundParameters['InputObject'] = $InputObject
+            }
+
+            $old = $PSStyle.OutputRendering
+            try {
+                $PSStyle.OutputRendering = 'Ansi'
+                $pipe = $Pipeline.Ast.GetScriptBlock().GetSteppablePipeline($MyInvocation.CommandOrigin)
+                $pipe.Begin($PSCmdlet)
+            } finally {
+                $PSStyle.OutputRendering = $old
+            }
+        } catch {
+            throw
+        }
+    }
+    process {
+        $BoundParameters['InputObject'] = $InputObject
+        try {
+            $old = $PSStyle.OutputRendering
+            try {
+                $PSStyle.OutputRendering = 'Ansi'
+                $pipe.Process($PSItem)
+            } finally {
+                $PSStyle.OutputRendering = $old
+            }
+        }
+        catch {
+            throw
+        }
+    }
+    end {
+        $BoundParameters['InputObject'] = $InputObject
+        try {
+            $old = $PSStyle.OutputRendering
+            try {
+                $PSStyle.OutputRendering = 'Ansi'
+                $pipe.End()
+            } finally {
+                $PSStyle.OutputRendering = $old
+            }
+        } catch {
+            throw
+        }
+    }
+}
+
+function begin {}
+function process {}
+function end {}
+function catch {}
+function try {}
+function while {}
+function for {}
+
+function Format-PowerShell {
+    [Alias('psh')]
+    [CmdletBinding(PositionalBinding = $false)]
+    [OutputType([string])]
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]] $ArgumentList,
+
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject
+    )
+    begin {
+        $ArgumentList += '-l', 'powershell'
+        $pipe = { Out-Bat @ArgumentList }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+        $pipe.Begin($PSCmdlet)
+    }
+    process {
+        $pipe.Process($PSItem)
+    }
+    end {
+        $pipe.End()
+    }
+}
+
+function Format-CSharp {
+    [Alias('cs')]
+    [CmdletBinding(PositionalBinding = $false)]
+    [OutputType([string])]
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]] $ArgumentList,
+
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject
+    )
+    begin {
+        $ArgumentList += '-l', 'cs'
+        $pipe = { Out-Bat @ArgumentList }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+        $pipe.Begin($PSCmdlet)
+    }
+    process {
+        $pipe.Process($PSItem)
+    }
+    end {
+        $pipe.End()
+    }
+}
+
+function Out-Bat {
+    [Alias('ob')]
+    [CmdletBinding(PositionalBinding = $false)]
+    [OutputType([string])]
+    param(
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]] $ArgumentList,
+
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject
+    )
+    begin {
+        $includeStyle = $MyInvocation.ExpectingInput
+        $style = '--style', 'grid,numbers,snip'
+        foreach ($arg in $ArgumentList) {
+            if ($arg -match '^--style=') {
+                $includeStyle = $false
+                break
+            }
+
+            if ($arg -match '^--file-name') {
+                $style = '--style', 'grid,numbers,snip,header-filename'
+            }
+        }
+
+        if ($includeStyle) {
+            $ArgumentList += $style
+        }
+
+        $pipe = { bat @ArgumentList }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+        $pipe.Begin($PSCmdlet)
+    }
+    process {
+        $pipe.Process($PSItem)
+    }
+    end {
+        $pipe.End()
+    }
+}
+
+$locationAliasCompleter = {
+    param(
+        [string] $commandName,
+        [string] $parameterName,
+        [string] $wordToComplete,
+        [System.Management.Automation.Language.CommandAst] $commandAst,
+        [System.Collections.IDictionary] $fakeBoundParameters
+    )
+    end {
+        class Helper {
+            static [CompletionResult[]] GetCompletions(
+                [SessionState] $sessionState,
+                [string] $name,
+                [string] $root,
+                [string] $rest,
+                [bool] $includeFiles)
+            {
+                $root = (Get-Item $root).FullName
+                return & {
+                    $path = $root
+                    if ($rest) {
+                        $path = Join-Path $root -ChildPath $rest
+                    }
+
+                    foreach ($result in [CompletionCompleters]::CompleteFilename($path)) {
+                        if (-not $includeFiles -and $result.ResultType -eq [CompletionResultType]::ProviderItem) {
+                            continue
+                        }
+
+                        $completionText = $result.CompletionText.Trim([char]"'")
+                        if ($completionText.TrimEnd([char][Path]::DirectorySeparatorChar) -eq $root) {
+                            $relativePath = $completionText = $aliasedPath = $name
+                        } else {
+                            $relativePath = $sessionState.Path.NormalizeRelativePath($completionText, $root)
+                            if ($relativePath.Contains([string]'..')) {
+                                continue
+                            }
+                            $completionText = $aliasedPath = Join-Path $name -ChildPath $relativePath
+                        }
+
+                        if ($aliasedPath.Contains([char]' ')) {
+                            $completionText = "'$aliasedPath'"
+                        }
+
+                        [CompletionResult]::new(
+                            $completionText,
+                            $aliasedPath,
+                            $result.ResultType,
+                            $result.ToolTip)
+                    }
+                }
+            }
+        }
+
+        $projectsPath = $env:PROJECTS_PATH | ?? { 'C:\Projects' }
+
+        $first, $rest = $wordToComplete -split '[\\/]'
+        if ($rest) {
+            $rest = $rest -join [Path]::DirectorySeparatorChar
+        } else {
+            $rest = $null
+            $first += '*'
+        }
+
+        $includeFiles = $commandName -ne 'Set-LocationPlus'
+        $pattern = [WildcardPattern]::new($first, [WildcardOptions]::CultureInvariant -bor 'IgnoreCase')
+        [CompletionResult[]]@(
+            if ($pattern.IsMatch('other')) {
+                # yield
+                [CompletionResult]::new('other', 'other', [CompletionResultType]::ParameterValue, 'other')
+            }
+
+            $locationAliases = $script:LocationAliases
+            foreach ($kvp in $locationAliases.GetEnumerator()) {
+                if (-not $pattern.IsMatch($kvp.Key)) {
+                    continue
+                }
+
+                # yield
+                [Helper]::GetCompletions($ExecutionContext.SessionState, $kvp.Key, $kvp.Value, $rest, $includeFiles)
+            }
+
+            Get-ChildItem $projectsPath -Filter $first -Directory -ErrorAction Ignore | & { process {
+                [Helper]::GetCompletions($ExecutionContext.SessionState, $PSItem.BaseName, $PSItem.FullName, $rest, $includeFiles)
+            }})
+    }
+}
+
+Register-ArgumentCompleter -CommandName Set-LocationPlus -ParameterName Name -ScriptBlock $locationAliasCompleter
+Register-ArgumentCompleter -CommandName Resolve-PathAlias -ParameterName Name -ScriptBlock $locationAliasCompleter
+Register-ArgumentCompleter -CommandName Edit-FilePlus -ParameterName Name -ScriptBlock $locationAliasCompleter
+
+if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
+    . "$PSScriptRoot\PreviewCommands.ps1"
 }
 
 . "$PSScriptRoot\intrinsics.ps1"

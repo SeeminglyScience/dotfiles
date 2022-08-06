@@ -30,13 +30,29 @@ begin {
 }
 end {
     scoop bucket add extras
-    MaybeInstallScoopApp bat
-    MaybeInstallScoopApp less
-    MaybeInstallScoopApp gh
-    MaybeInstallScoopApp gpg
     MaybeInstallScoopApp 7zip 7z
-    MaybeInstallScoopApp wsl-ssh-pageant
-    MaybeInstallScoopApp python
+
+    $scoopApps = @(
+        'bat'
+        'less'
+        'gh'
+        'gpg'
+        'wsl-ssh-pageant'
+        'python'
+        'gzip'
+        'tar'
+        'wget'
+        'sed'
+        'fzf'
+        'htmlq'
+        'delta'
+        'clangd'
+    )
+
+    foreach ($app in $scoopApps) {
+        MaybeInstallScoopApp $app
+    }
+
     scoop install flow-launcher
 
     if ([WindowsIdentity]::GetCurrent().Owner.IsWellKnown([WellKnownSidType]::BuiltinAdministratorsSid)) {
@@ -57,6 +73,7 @@ end {
         'LESS' = '--quiet --raw-control-chars --quit-on-intr --ignore-case --prompt :'
         'LESSCHARSET' = 'utf-8'
         'CLASS_EXPLORER_TRUE_CHARACTER' = [char]0x2713 # check mark
+        'BAT_THEME' = 'Visual Studio Dark+'
     }
 
     foreach ($kvp in $env.GetEnumerator()) {
@@ -85,7 +102,8 @@ end {
             'PSFzf',
             'PSLambda',
             'PSScriptAnalyzer',
-            'ThreadJob')
+            'ThreadJob',
+            'PSEverything')
 
         $existingModules = Get-Module -ListAvailable |
             Group-Object Name |
