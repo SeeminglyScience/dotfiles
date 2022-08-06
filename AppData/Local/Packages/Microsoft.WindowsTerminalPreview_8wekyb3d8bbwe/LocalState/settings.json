@@ -3,38 +3,148 @@
     "$schema": "https://aka.ms/terminal-profiles-schema",
     "actions":
     [
-        { "command": "closeTab",        "keys": "ctrl+w" },
-        { "command": "newTab",          "keys": "ctrl+t" },
-        { "command": "scrollDownPage",  "keys": "ctrl+shift+pgdn" },
-        { "command": "nextTab",         "keys": "ctrl+tab" },
-        { "command": "openSettings",    "keys": "ctrl+comma" },
-        { "command": "prevTab",         "keys": "ctrl+shift+tab" },
-        { "command": "scrollDown",      "keys": "ctrl+shift+down" },
-        { "command": "scrollUpPage",    "keys": "ctrl+shift+pgup" },
-        { "command": "scrollUp",        "keys": "ctrl+shift+up" },
-
-        { "command": "unbound", "keys": "ctrl+shift+1" },
-        { "command": "unbound", "keys": "ctrl+shift+2" },
-        { "command": "unbound", "keys": "ctrl+shift+3" },
-        { "command": "unbound", "keys": "ctrl+shift+4" },
-        { "command": "unbound", "keys": "ctrl+shift+5" },
-        { "command": "unbound", "keys": "ctrl+shift+6" },
-        { "command": "unbound", "keys": "ctrl+shift+7" },
-        { "command": "unbound", "keys": "ctrl+shift+8" },
-        { "command": "unbound", "keys": "ctrl+shift+9" },
-        { "command": "unbound", "keys": "alt+1" },
-        { "command": "unbound", "keys": "alt+2" },
-        { "command": "unbound", "keys": "alt+3" },
-        { "command": "unbound", "keys": "alt+4" },
-        { "command": "unbound", "keys": "alt+5" },
-        { "command": "unbound", "keys": "alt+6" },
-        { "command": "unbound", "keys": "alt+7" },
-        { "command": "unbound", "keys": "alt+8" },
-        { "command": "unbound", "keys": "alt+9" }
+        {
+            "command":
+            {
+                "action": "nextTab"
+            },
+            "keys": "ctrl+tab"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+w"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+shift+n"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+shift+p"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+shift+p"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+shift+1"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+shift+2"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+shift+3"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+shift+4"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+shift+5"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+shift+6"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+shift+7"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+shift+8"
+        },
+        {
+            "command": "unbound",
+            "keys": "ctrl+shift+9"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+1"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+2"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+3"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+4"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+5"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+6"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+7"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+8"
+        },
+        {
+            "command": "unbound",
+            "keys": "alt+9"
+        },
+        {
+            "command": "scrollDownPage",
+            "keys": "ctrl+shift+pgdn"
+        },
+        {
+            "command":
+            {
+                "action": "newTab"
+            },
+            "keys": "ctrl+t"
+        },
+        {
+            "command":
+            {
+                "action": "prevTab"
+            },
+            "keys": "ctrl+shift+tab"
+        },
+        {
+            "command":
+            {
+                "action": "openSettings"
+            },
+            "keys": "ctrl+comma"
+        },
+        {
+            "command": "scrollUpPage",
+            "keys": "ctrl+shift+pgup"
+        },
+        {
+            "command":
+            {
+                "action": "scrollDown"
+            },
+            "keys": "ctrl+shift+down"
+        },
+        {
+            "command":
+            {
+                "action": "scrollUp"
+            },
+            "keys": "ctrl+shift+up"
+        }
     ],
     "alwaysShowTabs": true,
     "centerOnLaunch": true,
-    "copyFormatting": true,
+    "copyFormatting": "all",
     "defaultProfile": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
     "initialCols": 140,
     "initialRows": 38,
@@ -42,40 +152,60 @@
     {
         "defaults":
         {
-            "unfocusedAppearance": {},
             "background": "#282828",
-            "opacity": 100,
-            "font": {
+            "bellStyle": "none",
+            "closeOnExit": "graceful",
+            "colorScheme": "CampbellFixed",
+            "cursorShape": "bar",
+            "font":
+            {
                 "face": "CaskaydiaCove NF",
                 "size": 13
             },
-            "bellStyle": "none",
-            "colorScheme": "CampbellFixed",
-            "closeOnExit": "graceful",
-            "cursorShape": "bar",
             "hidden": false,
-            "snapOnInput": true,
-            "useAcrylic": false,
+            "historySize": 9001,
+            "opacity": 100,
             "padding": "0, 0, 0, 0",
-            "historySize": 9001
+            "snapOnInput": true,
+            "unfocusedAppearance": {},
+            "useAcrylic": false
         },
         "list":
         [
             {
                 "commandline": "C:\\Program Files\\PowerShell\\7-preview\\pwsh.exe",
                 "guid": "{574e775e-4f2a-5b96-ac1e-a2962a402336}",
+                "hidden": false,
                 "icon": "ms-appx:///ProfileIcons/{574e775e-4f2a-5b96-ac1e-a2962a402336}.png",
                 "name": "PowerShell Preview",
                 "source": "Windows.Terminal.PowershellCore",
                 "startingDirectory": "%USERPROFILE%"
             },
             {
+                "commandline": "C:\\Projects\\PowerShell\\src\\powershell-win-core\\bin\\Debug\\net7.0\\win7-x64\\publish\\pwsh.exe",
+                "guid": "{9a107e8c-34dc-4ed6-977e-9edaf29c2181}",
+                "icon": "ms-appx:///ProfileIcons/{574e775e-4f2a-5b96-ac1e-a2962a402336}.png",
+                "name": "PowerShell Dev",
+                "startingDirectory": "%USERPROFILE%",
+                "tabColor": "#003F52"
+            },
+            {
+                "closeOnExit": "graceful",
+                "commandline": "wsl.exe -d Ubuntu pwsh",
+                "guid": "{2c4de342-38b7-51cf-b940-2309a097f518}",
+                "hidden": false,
+                "icon": "ms-appx:///ProfileIcons/{9acb9455-ca41-5af7-950f-6bca1bc9722f}.png",
+                "name": "Ubuntu",
+                "source": "Windows.Terminal.Wsl",
+                "tabColor": "#FA6400"
+            },
+            {
                 "commandline": "C:\\Program Files\\PowerShell\\7-preview\\pwsh.exe",
+                "elevate": true,
                 "guid": "{5846e014-290f-40b1-ac22-a7c5033c06d3}",
                 "icon": "ms-appx:///ProfileIcons/{574e775e-4f2a-5b96-ac1e-a2962a402336}.png",
                 "name": "PowerShell Preview (Elevated)",
-                "startingDirectory": "%USERPROFILE%",
-                "elevate": true
+                "startingDirectory": "%USERPROFILE%"
             },
             {
                 "commandline": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
@@ -106,17 +236,16 @@
                 "startingDirectory": "%USERPROFILE%"
             },
             {
-                "closeOnExit": "graceful",
-                "commandline": "wsl.exe -d Ubuntu pwsh",
-                "guid": "{2c4de342-38b7-51cf-b940-2309a097f518}",
-                "icon": "ms-appx:///ProfileIcons/{9acb9455-ca41-5af7-950f-6bca1bc9722f}.png",
-                "name": "Ubuntu",
-                "tabColor": "#fa6400"
-            },
-            {
                 "guid": "{b453ae62-4e3d-5e58-b989-0a998ec441b8}",
+                "hidden": false,
                 "name": "Azure Cloud Shell",
                 "source": "Windows.Terminal.Azure"
+            },
+            {
+                "guid": "{63e31163-583f-5850-9c1e-24e227dd2da9}",
+                "hidden": false,
+                "name": "PowerShell (dotnet global)",
+                "source": "Windows.Terminal.PowershellCore"
             }
         ]
     },
