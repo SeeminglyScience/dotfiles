@@ -54,6 +54,7 @@ end {
     }
 
     scoop install flow-launcher
+    scoop install https://gist.github.com/SeeminglyScience/8dc717be6e6d362ad65efbdf124922b8/raw/psudad.json
 
     if ([WindowsIdentity]::GetCurrent().Owner.IsWellKnown([WellKnownSidType]::BuiltinAdministratorsSid)) {
         & "$PSScriptRoot\admin_tasks.ps1"

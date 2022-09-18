@@ -406,5 +406,152 @@
                 </TableRowEntries>
             </TableControl>
         </View>
+        <View>
+            <Name>Utility.CommandParameterInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>Utility.CommandParameterInfo</TypeName>
+            </ViewSelectedBy>
+            <GroupBy>
+                <PropertyName>Set</PropertyName>
+                <CustomControl>
+                    <CustomEntries>
+                        <CustomEntry>
+                            <CustomItem>
+                                <Text>    Set: </Text>
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        if ($_._set.IsDefault) {
+                                            return [ClassExplorer.Internal._Format]::Variable($_.Set) + ' (Default)'
+                                        }
+
+                                        return [ClassExplorer.Internal._Format]::Variable($_.Set)
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                                <NewLine />
+                                <NewLine />
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        "$([char]0x1b)[90m(# = Position, M = IsMandatory, D = IsDynamic)$([char]0x1b)[0m"
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                            </CustomItem>
+                        </CustomEntry>
+                    </CustomEntries>
+                </CustomControl>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Label>#</Label>
+                        <Width>2</Width>
+                        <Alignment>Right</Alignment>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>M</Label>
+                        <Width>1</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>D</Label>
+                        <Width>1</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>ValueFrom</Label>
+                        <Width>14</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Type</Label>
+                        <Width>25</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Name</Label>
+                        <Width>40</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Attributes</Label>
+                    </TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if ($_.Position -eq [int]::MinValue) {
+                                        return ''
+                                    }
+
+                                    [ClassExplorer.Internal._Format]::Number($_.Position)
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>[ClassExplorer.Internal._Format]::FancyBool($_.IsMandatory)</ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>[ClassExplorer.Internal._Format]::FancyBool($_.IsDynamic)</ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    (&amp; {
+                                        if ($_.ValueFromPipeline) {
+                                            [ClassExplorer.Internal._Format]::MemberName('Pipe')
+                                        }
+
+                                        if ($_.ValueFromPipelineByPropertyName) {
+                                            [ClassExplorer.Internal._Format]::MemberName('Property')
+                                        }
+
+                                        if ($_.ValueFromRemainingArguments) {
+                                            [ClassExplorer.Internal._Format]::MemberName('RemainingArgs')
+                                        }
+                                    }) -join ', '
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>[ClassExplorer.Internal._Format]::Type($_.Type)</ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if (-not $_.Aliases) {
+                                        return [ClassExplorer.Internal._Format]::Variable($_.Name)
+                                    }
+
+                                    $sb = [System.Text.StringBuilder]::new()
+                                    $null = &amp; {
+                                        # $reset = "$([char]0x1b)[0m"
+                                        $reset = ''
+
+                                        $sb.Append([ClassExplorer.Internal._Format]::Variable($_.Name)).
+                                            Append($reset).Append(' (')
+
+                                        $sb.Append([ClassExplorer.Internal._Format]::Variable($_.Aliases[0]))
+                                        for ($i = 1; $i -lt $_.Aliases.Count; $i++) {
+                                            $sb.Append(', ')
+                                            $sb.Append([ClassExplorer.Internal._Format]::Variable($_.Aliases[$i]))
+                                        }
+
+                                        $sb.Append(')')
+                                    }
+
+                                    return $sb.ToString()
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    (&amp; {
+                                        foreach ($attr in $_.Attributes) {
+                                            $typeName = $attr.GetType().Name
+                                            if ($attr.GetType().Name -in [Parameter].Name, 'NullableAttribute') {
+                                                continue
+                                            }
+
+                                            [ClassExplorer.Internal._Format]::Type($typeName -replace 'Attribute$')
+                                        }
+                                    }) -join ', '
+                                </ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
     </ViewDefinitions>
 </Configuration>

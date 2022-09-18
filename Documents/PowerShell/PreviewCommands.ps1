@@ -1,4 +1,5 @@
 ﻿using namespace System.Diagnostics
+using namespace System.Management.Automation
 
 function New-PromptBox {
     param([string] $text)
@@ -31,7 +32,7 @@ function Invoke-Fzf {
         [Parameter()]
         [Alias('h')]
         [ValidateRange(10, 100)]
-        [int] $Height = 40,
+        [int] $Height = 60,
 
         [Parameter()]
         [Alias('f')]
@@ -62,6 +63,9 @@ function Invoke-Fzf {
         [Parameter()]
         [string] $WithNth,
 
+        [Parameter()]
+        [string] $Nth,
+
         [Parameter(DontShow)]
         [System.Management.Automation.PSCmdlet] $Context
     )
@@ -75,17 +79,23 @@ function Invoke-Fzf {
                 $process.Close()
                 $process.WaitForExit(200)
             }
+        } catch {
         } finally {
             $process.Dispose()
+            ($inputWriter)?.Dispose()
         }
     }
     begin {
-        class InputWriter {
+        class InputWriter : System.IDisposable {
             hidden [Process] $_process
             hidden [System.Collections.Generic.List[psobject]] $_input
+            hidden [System.Management.Automation.SteppablePipeline] $_pipe
+            hidden [bool] $_headerReceived
+            hidden [bool] $_includeHeader
 
-            InputWriter([Process] $process) {
+            InputWriter([Process] $process, [System.Management.Automation.SteppablePipeline] $pipe) {
                 $this._process = $process
+                $this._pipe = $pipe
             }
 
             [string] GetAdditionalArgs([bool] $skipWithNth) {
@@ -110,22 +120,55 @@ function Invoke-Fzf {
             }
 
             hidden [string] GetInputString([psobject] $pso) {
-                return ([string]$pso) + "`u{00a0}"
+                $line = $null
+                if (-not $this._headerReceived) {
+                    $this._headerReceived = $true
+                    $this._pipe.Begin($true)
+                    $lines = $this._pipe.Process([psobject]$pso)
+                    $formatItem = $pso | Format-Table
+                    if ($formatItem[0].formatEntryInfo?.GetType().Name -in 'RawTextFormatEntry', 'ComplexViewEntry') {
+                        $this._process.StandardInput.Write("-1`u{00a0} " + '' + "`u{00a0}`0")
+                        $line = $lines[0]
+                    } else {
+                        $this._process.StandardInput.Write("-1`u{00a0} " + [string]$lines[0] + "`u{00a0}`0")
+                        $line = $lines[2]
+                    }
+                } else {
+                    $line = $this._pipe.Process([psobject]$pso)
+                }
+
+                return ([string]$line) + "`u{00a0}"
+            }
+
+            [void] Dispose() {
+                ($this._pipe)?.Dispose()
             }
         }
 
         class FormatInputWriter : InputWriter {
             hidden [scriptblock] $_searchable
             hidden [scriptblock] $_preview
+            hidden [bool] $_skipPreviewCompression
 
-            FormatInputWriter([Process] $process, [scriptblock] $searchable, [scriptblock] $preview)
-                : base($process)
+            FormatInputWriter(
+                [Process] $process,
+                [SteppablePipeline] $pipe,
+                [scriptblock] $searchable,
+                [scriptblock] $preview,
+                [bool] $skipPreviewCompression)
+                : base($process, $pipe)
             {
                 $this._searchable = $searchable
                 $this._preview = $preview
+                $this._skipPreviewCompression = $skipPreviewCompression
             }
 
-            static [FormatInputWriter] Create([Process] $process, [psobject] $formatObject) {
+            static [FormatInputWriter] Create(
+                [Process] $process,
+                [psobject] $formatObject,
+                [SteppablePipeline] $pipe,
+                [bool] $skipPreviewCompression)
+            {
                 if ($formatObject -is [hashtable]) {
                     $searchable = $null
                     $preview = $null
@@ -147,11 +190,11 @@ function Invoke-Fzf {
                         throw 'Hashtable must have a key for "Searchable" and/or "Preview".'
                     }
 
-                    return [FormatInputWriter]::new($process, $searchable, $preview)
+                    return [FormatInputWriter]::new($process, $pipe, $searchable, $preview, $skipPreviewCompression)
                 }
 
                 if ($formatObject -is [scriptblock]) {
-                    return [FormatInputWriter]::new($process, $formatObject, $null)
+                    return [FormatInputWriter]::new($process, $pipe, $formatObject, $null, $skipPreviewCompression)
                 }
 
                 throw 'Expected "Format" parameter to be a scriptblock or hashtable containing the keys "Searchable" and/or "Preview".'
@@ -162,27 +205,46 @@ function Invoke-Fzf {
             }
 
             [string] GetAdditionalArgs([bool] $skipWithNth) {
+                if ($this._skipPreviewCompression) {
+                    return ([InputWriter]$this).GetAdditionalArgs($skipWithNth)
+                }
+
                 return (& {
                     ([InputWriter]$this).GetAdditionalArgs($skipWithNth)
 
                     if ($this._preview) {
-                        '--preview "call %USERPROFILE%\Documents\PowerShell\un-gz.bat {-1}"'
+                        if (-not (Get-Command psudad -ErrorAction Ignore)) {
+                            throw [System.InvalidOperationException]::new(
+                                'Expected "psudad" console application to be installed. See https://github.com/SeeminglyScience/psudad')
+                        }
+
+                        '--preview "psudad {-1}"'
                     }
                 }) -join ' '
             }
 
             hidden [string] GetInputString([psobject] $pso) {
+                $stringValue = $null
+                if (-not $this._searchable) {
+                    $stringValue = ([InputWriter]$this).GetInputString($pso)
+                } else {
+                    if (-not $this._headerReceived) {
+                        $this._process.StandardInput.Write("-1`u{00a0} " + '' + "`u{00a0}`0")
+                        $this._headerReceived = $true
+                    }
 
-                $stringValue = $null -eq $this._searchable ?
-                    [string]$pso :
-                    ($this.Evaluate($this._searchable, $pso) -join "`u{00a0}")
+                    $stringValue = $this.Evaluate($this._searchable, $pso) -join "`u{00a0}"
+                }
 
                 if (-not $this._preview) {
                     return $stringValue
                 }
 
-                $previewString = $this.Evaluate($this._preview, $pso)
-                $previewString = $this.GetAsGzBase64($previewString)
+                $previewString = [string]$this.Evaluate($this._preview, $pso)
+                if (-not $this._skipPreviewCompression) {
+                    $previewString = $this.GetAsGzBase64($previewString)
+                }
+
                 return $stringValue, $previewString -join "`u{00a0}"
             }
 
@@ -233,7 +295,8 @@ function Invoke-Fzf {
             "--pointer=`u{25c6}",
             "--marker=`"$Marker`"",
             '--cycle',
-            '--no-sort')
+            '--no-sort',
+            '--header-lines=1')
 
         $allBinds = (
             'change:first',
@@ -291,7 +354,10 @@ function Invoke-Fzf {
         }
 
         if ($Preview) {
-            $fullArgs += '--preview="{0}"' -f $Preview
+            $alteredPreview = '@ECHO OFF && for %g in ({{-1}}) do ({0})' -f (
+                $Preview -replace '\$_', '%~g' -replace '"', '\"')
+
+            $fullArgs += '--preview="{0}"' -f $alteredPreview
         }
 
         if ($Header) {
@@ -306,9 +372,12 @@ function Invoke-Fzf {
         $process = [System.Diagnostics.Process]::new()
         $inputWriter = $null
         if ($MyInvocation.ExpectingInput) {
+            # Need to create the steppable pipeline in a scope that won't be orphaned
+            # https://github.com/PowerShell/PowerShell/issues/17868
+            $pipe = { Format-TableRow }.GetSteppablePipeline([System.Management.Automation.CommandOrigin]::Internal)
             $inputWriter = $Format ?
-                [FormatInputWriter]::Create($process, $Format) :
-                [InputWriter]::new($process)
+                [FormatInputWriter]::Create($process, $Format, $pipe, (!!$Preview)) :
+                [InputWriter]::new($process, $pipe)
 
             $argsFromInputWriter = $inputWriter.GetAdditionalArgs(!!$WithNth)
             if ($argsFromInputWriter) {
@@ -452,13 +521,6 @@ function Show-TypeSearch {
                 }
 
                 if ($_.BaseType -eq [ValueType]) {
-                    # if ($_.CustomAttributes.AttributeType.Name -contains 'IsReadOnlyAttribute') {
-                    #     'readonly'
-                    # }
-
-                    # if ($_.IsByRefLike) {
-                    #     'ref'
-                    # }
 
                     return 'struct'
                 }
@@ -466,18 +528,6 @@ function Show-TypeSearch {
                 if ($_.IsInterface) {
                     return 'interface'
                 }
-
-                # if ($_.IsSealed -and $_.IsAbstract) {
-                #     return 'static class'
-                # }
-
-                # if ($_.IsSealed) {
-                #     return 'sealed class'
-                # }
-
-                # if ($_.IsAbstract) {
-                #     return 'abstract class'
-                # }
 
                 return 'class'
             }) -join ' '
@@ -586,9 +636,6 @@ function Show-MemberSearch {
                     $_.Module.Assembly.Location
                     $_.MetadataToken
                 }
-                # Preview = {
-                #     Format-MemberSignature -InputObject $_
-                # }
             }
             Context = $PSCmdlet
         }
@@ -730,15 +777,7 @@ function Show-GitAddRestoreTui {
         [string[]] $GitArgs
     )
     end {
-        Show-GitStatusTui -Preserve -Prompt (New-PromptBox 'stage/unstage') @GitArgs
-            | & { process {
-                $null, $null, $file = $_ -split ' ', 3
-
-                return [PSCustomObject]@{
-                    Staged = $_[0] -ne ' '[0]
-                    File = $file
-                }
-            }}
+        Show-GitStatusTui -Prompt (New-PromptBox 'stage/unstage') @GitArgs
             | & { process {
                 if ($_.Staged) {
                     git restore --staged $_.File
@@ -756,33 +795,69 @@ function Show-GitStatusTui {
     param(
         [string] $Prompt = (New-PromptBox Status),
 
-        [switch] $Preserve,
-
         [Parameter(Position = 0, ValueFromRemainingArguments)]
         [string[]] $GitArgs
     )
+    begin {
+        function MakeObj {
+            param(
+                [bool] $staged,
+                [string] $mod,
+                [string] $file,
+                [string] $display
+            )
+            end {
+                $obj = [PSCustomObject]@{
+                    Staged = $staged
+                    Modifier = $mod
+                    File = $file
+                    Display = $display
+                }
+
+                $obj.psobject.Methods.Add([psscriptmethod]::new('ToString', { $this.File }))
+                $obj.psobject.Members.Add(
+                    [System.Management.Automation.PSMemberSet]::new(
+                        'PSStandardMembers',
+                        [System.Management.Automation.PSMemberInfo[]](
+                            [System.Management.Automation.PSPropertySet]::new(
+                                'DefaultDisplayPropertySet',
+                                [string[]]('Staged', 'Modifier', 'File')))))
+
+                return $obj
+            }
+        }
+    }
     end {
         $invokeFzfSplat = @{
-            Format = { $_ -split ' '; $null }
+            Format = { $_.Display, $_.File, $null }
             AdditionalArguments = '--preview-window="right:70%" --preview "git diff HEAD --color=always -- {-2} | sed 1,4d" --exit-0'
             Multiple = $true
             Height = 90
             NoSearch = $true
             Marker = 'S '
             Prompt = $Prompt
+            WithNth = 2
         }
 
-        $results = git -c color.status=always status --short @GitArgs
-            | Invoke-Fzf @invokeFzfSplat
+        & {
+            $textResults = @(git -c color.status=always status --short @GitArgs)
+            $parsableResults = @(git status --porcelain=v2 @GitArgs)
+            for ($i = 0; $i -lt $textResults.Length; $i++) {
+                $display = $textResults[$i]
+                $parsable = $parsableResults[$i]
+                if ($parsable.StartsWith('?')) {
+                    $null, $name = $parsable -split ' ', 2
+                    MakeObj $false '??' $name $display
+                    continue
+                }
 
-        if ($Preserve) {
-            return $results
-        }
+                $parts = $parsable -split ' ', 9
+                $status = $parts[1]
+                $path = $parts[8]
+                $isStaged = $status[0] -ne '.'[0]
 
-        $results | & { process {
-                $null, $file = $_ -split ' +', 2
-
-                return $file
-            }}
+                MakeObj $isStaged ($status -replace '\.') $path $display
+            }
+        } | Invoke-Fzf @invokeFzfSplat
     }
 }

@@ -109,12 +109,25 @@ class EncodingArgumentConverterAttribute : ArgumentTransformationAttribute {
     }
 }
 
+class CommandInfoArgumentConverterAttribute : ArgumentTransformationAttribute {
+    [object] Transform([EngineIntrinsics] $engineIntrinsics, [object] $inputData) {
+        if ($inputData -is [CommandInfo]) {
+            return $inputData
+        }
+
+        $asString = [string]$inputData
+        return Get-Command $asString | Select-Object -First 1
+    }
+}
+
 # Terrible dirty hack to get around using non-exported classes in some of the function
 # parameter blocks. Don't use this in a real module pls
 $typeAccel = [ref].Assembly.GetType('System.Management.Automation.TypeAccelerators')
 $typeAccel::Add('EncodingArgumentConverterAttribute', [EncodingArgumentConverterAttribute])
 $typeAccel::Add('EncodingArgumentConverter', [EncodingArgumentConverterAttribute])
 $typeAccel::Add('EncodingArgumentCompleter', [EncodingArgumentCompleter])
+$typeAccel::Add('CommandInfoArgumentConverterAttribute', [CommandInfoArgumentConverterAttribute])
+$typeAccel::Add('CommandInfoArgumentConverter', [CommandInfoArgumentConverterAttribute])
 
 function EnsureCommandStopperInitialized {
     [CmdletBinding()]
@@ -148,7 +161,7 @@ function EnsureCommandStopperInitialized {
                                 typeof(PSObject).Assembly
                                     .GetType("System.Management.Automation.StopUpstreamCommandsException")
                                     .GetConstructor(
-                                        BindingFlags.Public | BindingFlags.Instance,
+                                        BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance,
                                         null,
                                         new Type[] { typeof(InternalCommand) },
                                         null),
@@ -5435,16 +5448,16 @@ function Out-AnsiFormatting {
                 $BoundParameters['InputObject'] = $InputObject
             }
 
-            $old = $PSStyle.OutputRendering
+            $old = $global:PSStyle.OutputRendering
             try {
-                $PSStyle.OutputRendering = 'Ansi'
+                $global:PSStyle.OutputRendering = 'Ansi'
                 $pipe = $Pipeline.Ast.GetScriptBlock().GetSteppablePipeline($MyInvocation.CommandOrigin)
                 $pipe.Begin($PSCmdlet)
             } finally {
-                $PSStyle.OutputRendering = $old
+                $global:PSStyle.OutputRendering = $old
             }
         } catch {
-            throw
+            $PSCmdlet.WriteError($PSItem)
         }
     }
     process {
@@ -5459,7 +5472,7 @@ function Out-AnsiFormatting {
             }
         }
         catch {
-            throw
+            $PSCmdlet.WriteError($PSItem)
         }
     }
     end {
@@ -5473,7 +5486,7 @@ function Out-AnsiFormatting {
                 $PSStyle.OutputRendering = $old
             }
         } catch {
-            throw
+            $PSCmdlet.WriteError($PSItem)
         }
     }
 }
@@ -5659,6 +5672,386 @@ $locationAliasCompleter = {
             Get-ChildItem $projectsPath -Filter $first -Directory -ErrorAction Ignore | & { process {
                 [Helper]::GetCompletions($ExecutionContext.SessionState, $PSItem.BaseName, $PSItem.FullName, $rest, $includeFiles)
             }})
+    }
+}
+
+function Format-TableRow {
+    param(
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject,
+
+        [switch] $HideTableHeaders
+    )
+    begin {
+        $ft = { Format-Table @PSBoundParameters -Group { $true } }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+        $ft.Begin($MyInvocation.ExpectingInput)
+
+        $oafParams = @{}
+        $os = { Out-AnsiFormatting -Stream @oafParams }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+        $os.Begin($MyInvocation.ExpectingInput)
+    }
+    process {
+        foreach ($item in $ft.Process($PSItem)) {
+            if ($null -ne $item.groupingEntry) {
+                $item.groupingEntry = $null
+            }
+
+            $oafParams['InputObject'] = $item
+            $os.Process($item) | & { process {
+                if (-not $PSItem) {
+                    return
+                }
+
+                return $PSItem
+            }}
+        }
+    }
+    end {
+        foreach ($item in $ft.End()) {
+            if ($null -ne $item.groupingEntry) {
+                $item.groupingEntry = $null
+            }
+
+            $oafParams['InputObject'] = $item
+            $os.Process($item) | & { process {
+                if (-not $PSItem) {
+                    return
+                }
+
+                return $PSItem
+            }}
+        }
+
+        $os.End()
+    }
+}
+
+function Show-DebugLine {
+    [Alias('sdl')]
+    [CmdletBinding()]
+    param(
+        [int] $Context = 5
+    )
+    end {
+        if (-not $PSDebugContext) {
+            return
+        }
+
+        [IScriptExtent] $scriptPosition = $PSDebugContext.InvocationInfo.
+            GetType().
+            GetProperty('ScriptPosition', 60).
+            GetValue($PSDebugContext.InvocationInfo)
+
+        $fullText = $scriptPosition.StartScriptPosition.GetFullScript()
+        $hlstart = $scriptPosition.StartLineNumber
+        $hlend = $scriptPosition.EndLineNumber
+
+        $start = [Math]::Max($hlstart - $context, 1)
+        $end = $hlend + $Context
+
+        $argList = (
+            '--language', 'powershell',
+            '--highlight-line', "${hlstart}:${hlend}",
+            '--line-range', "${start}:${end}",
+            '--color=always',
+            '--pager=never'
+        )
+
+        if ($scriptPosition.File) {
+            $argList += '--file-name', $scriptPosition.File, '--style', 'grid,numbers,snip,header-filename'
+        } else {
+            $argList += '--style', 'grid,numbers,snip'
+        }
+
+        $fullText | bat @argList
+    }
+}
+
+function Get-EnumFlag {
+    [Alias('flags')]
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject,
+
+        [Parameter(Position = 0)]
+        [ArgumentCompleter([ClassExplorer.TypeFullNameArgumentCompleter])]
+        [ValidateNotNull()]
+        [type] $Type,
+
+        [Parameter()]
+        [Alias('s')]
+        [switch] $AsString,
+
+        [Parameter(Position = 1)]
+        [ValidateNotNull()]
+        [Alias('m')]
+        [hashtable] $AdditionalValueMap = @{}
+    )
+    begin {
+        function MakeFakeEnumObject {
+            param($exampleValueInfo, $type, $name, $value)
+            $lastBits = $exampleValueInfo.Bits
+            $bitsPadding = ($lastBits -replace '[\. ]').Length / 8
+            $hexPadding = $exampleValueInfo.Hex.Length - 2
+            $info = [PSCustomObject]@{
+                PSTypeName = 'UtilityProfile.EnumValueInfo'
+                EnumType = $type
+                Name = $name
+                Value = $value
+                Hex = hex -InputObject $value -Padding $hexPadding
+                Bits = bits -InputObject $value -Padding $bitsPadding
+            }
+
+            $info.psobject.Members.Add(
+                [PSMemberSet]::new(
+                    'PSStandardMembers',
+                    [PSMemberInfo[]](
+                        [PSPropertySet]::new(
+                            'DefaultDisplayPropertySet',
+                            [string[]]('Name', 'Value', 'Hex', 'Bits')))))
+
+            return $info
+        }
+    }
+    process {
+        if ($null -eq $InputObject) {
+            return
+        }
+
+        if ($AsString) {
+            $null = $PSBoundParameters.Remove('AsString')
+            $results = Get-EnumFlag @PSBoundParameters
+            $matched = $results | Where-Object Name -ne Unmatched
+            $unmatched = $results | Where-Object Name -eq Unmatched
+            $resultString = $matched.Name -join ', '
+            if (-not $unmatched) {
+                return $resultString
+            }
+
+            if (-not $matched) {
+                return hex -InputObject $unmatched.Value
+            }
+
+            return $resultString, (hex -InputObject $unmatched.Value) -join ', '
+        }
+
+        if ($null -eq $Type) {
+            $Type = $InputObject.GetType()
+        }
+
+        if (-not $Type.IsEnum) {
+            throw 'Must pass an enum to this function.'
+        }
+
+        # Yes this is on purpose
+        $valueInfos = [hashtable]::new()
+
+        foreach ($valueInfo in $Type | Get-EnumInfo) {
+            $valueInfos[$valueInfo.Name] = $valueInfo
+        }
+
+        $unmatchedFlags = $InputObject
+        foreach ($valueName in $Type.GetEnumNames()) {
+            $value = $Type::$valueName
+            if (-not ($InputObject -band $value)) {
+                continue
+            }
+
+            $unmatchedFlags = $unmatchedFlags -band -bnot $value
+
+            # yield
+            $valueInfos[$valueName]
+        }
+
+        $exampleValueInfo = $valueInfos.Values | Select-Object -First 1
+        foreach ($kvp in $AdditionalValueMap.GetEnumerator()) {
+            if (-not ($unmatchedFlags -band $kvp.Value)) {
+                continue
+            }
+
+            $unmatchedFlags = $unmatchedFlags -band -bnot $kvp.Value
+
+            # yield
+            MakeFakeEnumObject $exampleValueInfo $Type $kvp.Key $kvp.Value
+        }
+
+        if ($unmatchedFlags) {
+            # yield
+            MakeFakeEnumObject $exampleValueInfo $Type 'Unmatched' $unmatchedFlags
+        }
+    }
+}
+
+function Get-CommandParameter {
+    [Alias('gcp')]
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [ValidateNotNull()]
+        [Alias('c')]
+        [CommandInfoArgumentConverter()]
+        [CommandInfo] $Command,
+
+        [Parameter(Position = 0)]
+        [ValidateNotNullOrEmpty()]
+        [Alias('Parameter')]
+        [SupportsWildcards()]
+        [string[]] $Name,
+
+        [Parameter()]
+        [switch] $IncludeCommon
+    )
+    begin {
+        [WildcardPattern[]] $targetParameters = foreach ($target in $Name) {
+            [WildcardPattern]::Get($target, [WildcardOptions]::IgnoreCase -bor 'CultureInvariant')
+        }
+
+        if (-not $targetParameters) {
+            $targetParameters = [WildcardPattern]::Get('*', [WildcardOptions]::IgnoreCase -bor 'CultureInvariant')
+        }
+
+        $isHiddenProp = [psnoteproperty].GetProperty('IsHidden', 60)
+    }
+    process {
+        foreach ($set in $Command.ParameterSets) {
+            foreach ($param in $set.Parameters) {
+                if (-not $IncludeCommon -and [Cmdlet]::CommonParameters.Contains($param.Name)) {
+                    continue
+                }
+
+                foreach ($target in $targetParameters) {
+                    if ($target.IsMatch($param.Name)) {
+                        $result = [PSCustomObject]@{
+                            PSTypeName = 'Utility.CommandParameterInfo'
+                            Set = $set.Name
+                            Aliases = $param.Aliases
+                            Position = $param.Position
+                            IsDynamic = $param.IsDynamic
+                            IsMandatory = $param.IsMandatory
+                            ValueFromPipeline = $param.ValueFromPipeline
+                            ValueFromPipelineByPropertyName = $param.ValueFromPipelineByPropertyName
+                            ValueFromRemainingArguments = $param.ValueFromRemainingArguments
+                            Type = $param.ParameterType
+                            Name = $param.Name
+                            Attributes = $param.Attributes
+                        }
+
+                        $_set = [psnoteproperty]::new('_set', $set)
+                        $isHiddenProp.SetValue($_set, $true)
+                        $result.psobject.Properties.Add($_set)
+
+                        $_parameter = [psnoteproperty]::new('_parameter', $param)
+                        $isHiddenProp.SetValue($_parameter, $true)
+                        $result.psobject.Properties.Add($_parameter)
+
+                        # yield
+                        $result
+                    }
+                }
+            }
+        }
+    }
+}
+
+Register-ArgumentCompleter -CommandName Get-CommandParameter -ParameterName Command -ScriptBlock {
+    param(
+        [string] $commandName,
+        [string] $parameterName,
+        [string] $wordToComplete,
+        [System.Management.Automation.Language.CommandAst] $commandAst,
+        [System.Collections.IDictionary] $fakeBoundParameters
+    )
+    end {
+        if (-not $wordToComplete) {
+            $wordToComplete = '*'
+        }
+
+        return [CompletionCompleters]::CompleteCommand($wordToComplete)
+    }
+}
+
+# Mainly just for Get-CommandParameter completers
+function Get-InferredCommand {
+    [CmdletBinding()]
+    param(
+        [IDictionary] $FakeBoundParameters,
+
+        [CommandAst] $CommandAst
+    )
+    end {
+        $command = $FakeBoundParameters['Command']
+        if ($command -is [CommandInfo]) {
+            return $command
+        }
+
+        if ($command -and $command -is [string]) {
+            return Get-Command $command | Select-Object -First 1
+        }
+
+        if ($CommandAst.Parent -isnot [PipelineAst]) {
+            return
+        }
+
+        $index = $CommandAst.Parent.PipelineElements.IndexOf($CommandAst)
+        if ($index -le 0) {
+            return
+        }
+
+        $previous = $CommandAst.Parent.PipelineElements[$index - 1]
+        if ($previous -isnot [CommandAst]) {
+            return
+        }
+
+        $previousName = $previous.GetCommandName()
+        if ($previousName -notin 'gcm', 'Get-Command') {
+            return
+        }
+
+        $firstArg = $Previous.CommandElements[1]
+        if ($firstArg -isnot [StringConstantExpressionAst]) {
+            return
+        }
+
+        $firstArg = $firstArg.Value
+        if (-not $firstArg) {
+            return
+        }
+
+        return Get-Command $firstArg | Select-Object -First 1
+    }
+}
+
+Register-ArgumentCompleter -CommandName Get-CommandParameter -ParameterName Name -ScriptBlock {
+    param(
+        [string] $commandName,
+        [string] $parameterName,
+        [string] $wordToComplete,
+        [System.Management.Automation.Language.CommandAst] $commandAst,
+        [System.Collections.IDictionary] $fakeBoundParameters
+    )
+    end {
+        if (-not $wordToComplete) {
+            $wordToComplete = '*'
+        } else {
+            $wordToComplete += '*'
+        }
+
+        $command = Get-InferredCommand -FakeBoundParameters $fakeBoundParameters -CommandAst $commandAst
+        if (-not $command) {
+            return
+        }
+
+        foreach ($parameter in $command.Parameters.Values) {
+            if ($parameter.Name -like $wordToComplete) {
+                # yield
+                [CompletionResult]::new(
+                    $parameter.Name,
+                    $parameter.Name,
+                    [CompletionResultType]::ParameterValue,
+                    $parameter.Name)
+            }
+        }
     }
 }
 
