@@ -553,5 +553,362 @@
                 </TableRowEntries>
             </TableControl>
         </View>
+        <View>
+            <Name>Utility.PwshVersionInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>Utility.PwshVersionInfo</TypeName>
+            </ViewSelectedBy>
+            <GroupBy>
+                <ScriptBlock>$_.Version.Major, $_.Version.Minor -join '.'</ScriptBlock>
+                <CustomControl>
+                    <CustomEntries>
+                        <CustomEntry>
+                            <CustomItem>
+                                <Text>    Release: </Text>
+                                <ExpressionBinding>
+                                    <ScriptBlock>return [ClassExplorer.Internal._Format]::Number(($_.Version.Major, $_.Version.Minor -join '.'))</ScriptBlock>
+                                </ExpressionBinding>
+                                <NewLine />
+                                <NewLine />
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        "$([char]0x1b)[90m(Label = PreReleaseTag)$([char]0x1b)[0m"
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                            </CustomItem>
+                        </CustomEntry>
+                    </CustomEntries>
+                </CustomControl>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Label>Version</Label>
+                        <Width>8</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Label</Label>
+                        <Width>10</Width>
+                    </TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>[ClassExplorer.Internal._Format]::Number($_.Version)</ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>[ClassExplorer.Internal._Format]::String($_.PreReleaseTag)</ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>Utility.PwshPathVersionInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>Utility.PwshPathVersionInfo</TypeName>
+            </ViewSelectedBy>
+            <GroupBy>
+                <ScriptBlock>$_.Version.Major, $_.Version.Minor -join '.'</ScriptBlock>
+                <CustomControl>
+                    <CustomEntries>
+                        <CustomEntry>
+                            <CustomItem>
+                                <Text>    Release: </Text>
+                                <ExpressionBinding>
+                                    <ScriptBlock>return [ClassExplorer.Internal._Format]::Number(($_.Version.Major, $_.Version.Minor -join '.'))</ScriptBlock>
+                                </ExpressionBinding>
+                                <NewLine />
+                                <NewLine />
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        "$([char]0x1b)[90m(Label = PreReleaseTag)$([char]0x1b)[0m"
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                            </CustomItem>
+                        </CustomEntry>
+                    </CustomEntries>
+                </CustomControl>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Label>Version</Label>
+                        <Width>8</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Label</Label>
+                        <Width>10</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Type</Label>
+                    </TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>[ClassExplorer.Internal._Format]::Number($_.Version)</ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>[ClassExplorer.Internal._Format]::String($_.PreReleaseTag)</ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if ($_.X86) {
+                                        return [ClassExplorer.Internal._Format]::Variable('x86')
+                                    }
+
+                                    if ($_.FxDependentWinDesktop) {
+                                        return [ClassExplorer.Internal._Format]::Variable('fxdependentWinDesktop')
+                                    }
+
+                                    if ($_.FxDependent) {
+                                        return [ClassExplorer.Internal._Format]::Variable('fxdependent')
+                                    }
+
+                                    return [ClassExplorer.Internal._Format]::Variable('x64')
+                                </ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>Utility.PullRequest</Name>
+            <ViewSelectedBy>
+                <TypeName>Utility.PullRequest</TypeName>
+            </ViewSelectedBy>
+            <CustomControl>
+                <CustomEntries>
+                    <CustomEntry>
+                        <CustomItem>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    $today = [datetime]::Today
+                                    $updatedAt = if ($today -eq $_.updatedAt.Date) {
+                                        " `u{fbae} {0} " -f $_.updatedAt.ToString(
+                                            [cultureinfo]::CurrentCulture.DateTimeFormat.ShortTimePattern)
+                                    } else {
+                                        $days = ($today - $_.updatedAt.Date).TotalDays
+                                        $str = if ($days -gt 1) { 'days' } else { 'day' }
+                                        " `u{fbae} {0} {1} ago " -f $days, $str
+                                    }
+
+                                    $suffix = "`u{2500}" * 5
+                                    $bb = $PSStyle.Foreground.BrightBlack
+                                    $bw = $PSStyle.Foreground.BrightWhite
+                                    $re = $PSStyle.Reset
+                                    "$bb$("`u{2500}" * ($Host.UI.RawUI.WindowSize.Width - 2 - $suffix.Length - $updatedAt.Length))$bw$updatedAt$bb$suffix$re"
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <NewLine />
+                            <Text> </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    '{0}{2, 5}{1}' -f (
+                                        $PSStyle.Foreground.BrightBlack,
+                                        $PSStyle.Reset,
+                                        "`u{ea6b} $($_.commentsCount)")
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <Text> </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    if ($_.state -eq 'open') {
+                                        return "$($PSStyle.Foreground.Green)`u{ea64}$($PSStyle.Reset)"
+                                    }
+
+                                    if ($_.state -eq 'closed') {
+                                        return "$($PSStyle.Foreground.Red)`u{ebda}$($PSStyle.Reset)"
+                                    }
+
+                                    if ($_.state -eq 'merged') {
+                                        return "$($PSStyle.Foreground.BrightMagenta)`u{eafe}$($PSStyle.Reset)"
+                                    }
+
+                                    if ($_.state -eq 'draft') {
+                                        return "$($PSStyle.Foreground.BrightBlack)`u{ebdb}$($PSStyle.Reset)"
+                                    }
+
+
+                                    return "$($PSStyle.Foreground.Red)?$($PSStyle.Reset)"
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <Text> </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    $PSStyle.FormatHyperlink(
+                                        "$($PSStyle.Foreground.White)$($_.repository.nameWithOwner)$($PSStyle.Reset)",
+                                        "https://github.com/$($_.repository.nameWithOwner)")
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <Text> </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    $PSStyle.FormatHyperlink(
+                                        (($_.title | Show-Markdown | % TrimEnd) -join "`n"),
+                                        $_.url)
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <NewLine />
+                            <Text>   </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    "{3}#{0} opened on {1:yyyy/MM/dd} by {2}{4}" -f (
+                                        $_.number,
+                                        $_.createdAt,
+                                        $PSStyle.FormatHyperlink(
+                                            $_.author.login,
+                                            "https://github.com/$($_.author.login)"),
+                                        $PSStyle.Foreground.BrightBlack,
+                                        $PSStyle.Reset)
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <NewLine />
+                            <Text> </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    ($_.Labels | Get-GithubLabelDisplay) -join ' '
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                        </CustomItem>
+                    </CustomEntry>
+                </CustomEntries>
+            </CustomControl>
+        </View>
+        <View>
+            <Name>Utility.Issue</Name>
+            <ViewSelectedBy>
+                <TypeName>Utility.Issue</TypeName>
+            </ViewSelectedBy>
+            <CustomControl>
+                <CustomEntries>
+                    <CustomEntry>
+                        <CustomItem>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    $today = [datetime]::Today
+                                    $updatedAt = if ($today -eq $_.updatedAt.Date) {
+                                        " `u{fbae} {0} " -f $_.updatedAt.ToString(
+                                            [cultureinfo]::CurrentCulture.DateTimeFormat.ShortTimePattern)
+                                    } else {
+                                        $days = ($today - $_.updatedAt.Date).TotalDays
+                                        $str = if ($days -gt 1) { 'days' } else { 'day' }
+                                        " `u{fbae} {0} {1} ago " -f $days, $str
+                                    }
+
+                                    $suffix = "`u{2500}" * 5
+                                    $bb = $PSStyle.Foreground.BrightBlack
+                                    $bw = $PSStyle.Foreground.BrightWhite
+                                    $re = $PSStyle.Reset
+                                    "$bb$("`u{2500}" * ($Host.UI.RawUI.WindowSize.Width - 2 - $suffix.Length - $updatedAt.Length))$bw$updatedAt$bb$suffix$re"
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <NewLine />
+                            <Text> </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    '{0}{2, 5}{1}' -f (
+                                        $PSStyle.Foreground.BrightBlack,
+                                        $PSStyle.Reset,
+                                        "`u{ea6b} $($_.commentsCount)")
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <Text> </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    if ($_.state -eq 'open') {
+                                        return "$($PSStyle.Foreground.Green)`u{eb0c}$($PSStyle.Reset)"
+                                    }
+
+                                    if ($_.state -eq 'closed') {
+                                        return "$($PSStyle.Foreground.Red)`u{f41d}$($PSStyle.Reset)"
+                                    }
+
+                                    return "$($PSStyle.Foreground.Red)?$($PSStyle.Reset)"
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <Text> </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    $PSStyle.FormatHyperlink(
+                                        "$($PSStyle.Foreground.White)$($_.repository.nameWithOwner)$($PSStyle.Reset)",
+                                        "https://github.com/$($_.repository.nameWithOwner)")
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <Text> </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    $PSStyle.FormatHyperlink(
+                                        (($_.title | Show-Markdown | % TrimEnd) -join "`n"),
+                                        $_.url)
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <NewLine />
+                            <Text>   </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    "{3}#{0} opened on {1:yyyy/MM/dd} by {2}{4}" -f (
+                                        $_.number,
+                                        $_.createdAt,
+                                        $PSStyle.FormatHyperlink(
+                                            $_.author.login,
+                                            "https://github.com/$($_.author.login)"),
+                                        $PSStyle.Foreground.BrightBlack,
+                                        $PSStyle.Reset)
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                            <NewLine />
+                            <Text> </Text>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    ($_.Labels | Get-GithubLabelDisplay) -join ' '
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                        </CustomItem>
+                    </CustomEntry>
+                </CustomEntries>
+            </CustomControl>
+        </View>
+        <View>
+            <Name>Utility.VTInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>Utility.VTInfo</TypeName>
+            </ViewSelectedBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Width>10</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Sequence</Label>
+                        <Width>70</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader />
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <Wrap>true</Wrap>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <PropertyName>Name</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    $PSItem.Sequence # | Show-VT
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Description</PropertyName>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
     </ViewDefinitions>
 </Configuration>

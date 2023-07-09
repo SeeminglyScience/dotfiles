@@ -4,9 +4,10 @@
 sourceDir: {{ .chezmoi.sourceDir }}
 
 merge:
-  command: "nvim"
+  command: "code"
   args:
-    - -d
+    - --wait
+    - --merge
     - "{{ "{{ .Destination }}" }}"
     - "{{ "{{ .Source }}" }}"
     - "{{ "{{ .Target }}" }}"

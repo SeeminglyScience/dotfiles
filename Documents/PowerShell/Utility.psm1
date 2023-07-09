@@ -129,91 +129,140 @@ $typeAccel::Add('EncodingArgumentCompleter', [EncodingArgumentCompleter])
 $typeAccel::Add('CommandInfoArgumentConverterAttribute', [CommandInfoArgumentConverterAttribute])
 $typeAccel::Add('CommandInfoArgumentConverter', [CommandInfoArgumentConverterAttribute])
 
+function InitAsync {
+    param([scriptblock] $Action, [object[]] $ArgumentList)
+    begin {
+        class InitTask {
+            hidden [powershell] $_pwsh
+            hidden [IAsyncResult] $_asyncResult
+
+            static [InitTask] Create([scriptblock] $action, [object[]] $argumentList) {
+                $task = [InitTask]::new()
+                $task._pwsh = [powershell]::Create()
+                $task._pwsh.AddScript($Action, $true)
+                if ($argumentList) {
+                    $task._pwsh.AddArguments($argumentList)
+                }
+
+                $task._asyncResult = $task._pwsh.BeginInvoke()
+                return $task
+            }
+
+            [PSDataCollection[psobject]] Wait() {
+                return $this._pwsh.EndInvoke($this._asyncResult)
+            }
+        }
+    }
+    end {
+        return [InitTask]::Create($Action, $ArgumentList)
+    }
+}
+
+function WaitAsync {
+    param([ref] $Job)
+    if (-not $Job.Value) {
+        return
+    }
+
+    $Job.Value.Wait()
+    $Job.Value = $null
+}
+
+$commandStopperJob = InitAsync {
+    if ('UtilityProfile.CommandStopper' -as [type]) {
+        return
+    }
+
+    Add-Type -TypeDefinition '
+        using System;
+        using System.ComponentModel;
+        using System.Linq.Expressions;
+        using System.Management.Automation;
+        using System.Management.Automation.Internal;
+        using System.Reflection;
+
+        namespace UtilityProfile
+        {
+            [EditorBrowsable(EditorBrowsableState.Never)]
+            [Cmdlet(VerbsLifecycle.Stop, "UpstreamCommand")]
+            public class CommandStopper : PSCmdlet
+            {
+                private static readonly Func<PSCmdlet, Exception> s_creator;
+
+                static CommandStopper()
+                {
+                    ParameterExpression cmdlet = Expression.Parameter(typeof(PSCmdlet), "cmdlet");
+                    s_creator = Expression.Lambda<Func<PSCmdlet, Exception>>(
+                        Expression.New(
+                            typeof(PSObject).Assembly
+                                .GetType("System.Management.Automation.StopUpstreamCommandsException")
+                                .GetConstructor(
+                                    BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance,
+                                    null,
+                                    new Type[] { typeof(InternalCommand) },
+                                    null),
+                            cmdlet),
+                        "NewStopUpstreamCommandsException",
+                        new ParameterExpression[] { cmdlet })
+                        .Compile();
+                }
+
+                [Parameter(Position = 0, Mandatory = true)]
+                [ValidateNotNull]
+                public Exception Exception { get; set; }
+
+                [Hidden, EditorBrowsable(EditorBrowsableState.Never)]
+                public static void Stop(PSCmdlet cmdlet)
+                {
+                    var exception = s_creator(cmdlet);
+                    cmdlet.SessionState.PSVariable.Set("__exceptionToThrow", exception);
+                    var variable = GetOrCreateVariable(cmdlet, "__exceptionToThrow");
+                    object oldValue = variable.Value;
+                    try
+                    {
+                        variable.Value = exception;
+                        ScriptBlock.Create("& $ExecutionContext.InvokeCommand.GetCmdletByTypeName([UtilityProfile.CommandStopper]) $__exceptionToThrow")
+                            .GetSteppablePipeline(CommandOrigin.Internal)
+                            .Begin(false);
+                    }
+                    finally
+                    {
+                        variable.Value = oldValue;
+                    }
+                }
+
+                private static PSVariable GetOrCreateVariable(PSCmdlet cmdlet, string name)
+                {
+                    PSVariable result = cmdlet.SessionState.PSVariable.Get(name);
+                    if (result != null)
+                    {
+                        return result;
+                    }
+
+                    result = new PSVariable(name, null);
+                    cmdlet.SessionState.PSVariable.Set(result);
+                    return result;
+                }
+
+                protected override void BeginProcessing()
+                {
+                    throw Exception;
+                }
+            }
+        }'
+}
+
 function EnsureCommandStopperInitialized {
     [CmdletBinding()]
     param()
     end {
-        if ('UtilityProfile.CommandStopper' -as [type]) {
+        $commandStopperJob = $script:commandStopperJob
+        if (-not $commandStopperJob) {
             return
         }
 
-        Add-Type -TypeDefinition '
-            using System;
-            using System.ComponentModel;
-            using System.Linq.Expressions;
-            using System.Management.Automation;
-            using System.Management.Automation.Internal;
-            using System.Reflection;
-
-            namespace UtilityProfile
-            {
-                [EditorBrowsable(EditorBrowsableState.Never)]
-                [Cmdlet(VerbsLifecycle.Stop, "UpstreamCommand")]
-                public class CommandStopper : PSCmdlet
-                {
-                    private static readonly Func<PSCmdlet, Exception> s_creator;
-
-                    static CommandStopper()
-                    {
-                        ParameterExpression cmdlet = Expression.Parameter(typeof(PSCmdlet), "cmdlet");
-                        s_creator = Expression.Lambda<Func<PSCmdlet, Exception>>(
-                            Expression.New(
-                                typeof(PSObject).Assembly
-                                    .GetType("System.Management.Automation.StopUpstreamCommandsException")
-                                    .GetConstructor(
-                                        BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance,
-                                        null,
-                                        new Type[] { typeof(InternalCommand) },
-                                        null),
-                                cmdlet),
-                            "NewStopUpstreamCommandsException",
-                            new ParameterExpression[] { cmdlet })
-                            .Compile();
-                    }
-
-                    [Parameter(Position = 0, Mandatory = true)]
-                    [ValidateNotNull]
-                    public Exception Exception { get; set; }
-
-                    [Hidden, EditorBrowsable(EditorBrowsableState.Never)]
-                    public static void Stop(PSCmdlet cmdlet)
-                    {
-                        var exception = s_creator(cmdlet);
-                        cmdlet.SessionState.PSVariable.Set("__exceptionToThrow", exception);
-                        var variable = GetOrCreateVariable(cmdlet, "__exceptionToThrow");
-                        object oldValue = variable.Value;
-                        try
-                        {
-                            variable.Value = exception;
-                            ScriptBlock.Create("& $ExecutionContext.InvokeCommand.GetCmdletByTypeName([UtilityProfile.CommandStopper]) $__exceptionToThrow")
-                                .GetSteppablePipeline(CommandOrigin.Internal)
-                                .Begin(false);
-                        }
-                        finally
-                        {
-                            variable.Value = oldValue;
-                        }
-                    }
-
-                    private static PSVariable GetOrCreateVariable(PSCmdlet cmdlet, string name)
-                    {
-                        PSVariable result = cmdlet.SessionState.PSVariable.Get(name);
-                        if (result != null)
-                        {
-                            return result;
-                        }
-
-                        result = new PSVariable(name, null);
-                        cmdlet.SessionState.PSVariable.Set(result);
-                        return result;
-                    }
-
-                    protected override void BeginProcessing()
-                    {
-                        throw Exception;
-                    }
-                }
-            }'
+        $commandStopperJob.Wait()
+        $script:commandStopperJob = $null
     }
 }
 
@@ -2202,15 +2251,22 @@ function Show-Timer {
 }
 
 function Wait-AsyncResult {
-    [Alias('await')]
+    [Alias('swait')]
     [CmdletBinding()]
     param(
         [Parameter(ValueFromPipeline)]
         [psobject[]] $InputObject
     )
     begin {
+        $VoidTaskType = $script:VoidTaskType
         if (-not $VoidTaskType) {
-            $script:VoidTaskType = $VoidTaskType = [Task`1].MakeGenericType([Task]::Delay(1).Result.GetType())
+            $voidTask = [Task]::Delay(1)
+            if ($null -eq $voidTask.Result) {
+                # The void task type is no longer a thing
+                $script:VoidTaskType = $VoidTaskType = [void]
+            } else {
+                $script:VoidTaskType = $VoidTaskType = [Task`1].MakeGenericType([Task]::Delay(1).Result.GetType())
+            }
         }
 
         $tasksToAwait = $null
@@ -2249,16 +2305,21 @@ function Wait-AsyncResult {
     }
     end {
         if ($null -ne $tasksToAwait) {
-            $task = [Task]::WhenAll($tasksToAwait)
-            while (-not $task.AsyncWaitHandle.WaitOne(200)) { }
-            foreach ($singleTask in $tasksToAwait) {
-                if ($singleTask -is $voidTaskType) {
-                    $null = $singleTask.GetAwaiter().GetResult()
+            while ($tasksToAwait) {
+                $task = [Task]::WhenAny($tasksToAwait)
+                while (-not $task.AsyncWaitHandle.WaitOne(200)) { }
+
+                $finishedTask = $task.GetAwaiter().GetResult()
+
+                $null = $tasksToAwait.Remove($finishedTask)
+
+                if ($finishedTask -is $VoidTaskType) {
+                    $null = $finishedTask.GetAwaiter().GetResult()
                     continue
                 }
 
-                # yield
-                $singleTask.GetAwaiter().GetResult()
+
+                $finishedTask.GetAwaiter().GetResult()
             }
         }
 
@@ -2780,6 +2841,26 @@ function ConvertTo-Number {
     }
 }
 
+function Convert-Octal {
+    [Alias('oct')]
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [int] $InputObject,
+
+        [Parameter()]
+        [Alias('f')]
+        [switch] $From
+    )
+    process {
+        if ($From) {
+            return [convert]::ToInt32($InputObject, 8)
+        }
+
+        return [convert]::ToString($InputObject, 8)
+    }
+}
+
 function ConvertTo-HexString {
     [Alias('hex')]
     [CmdletBinding(PositionalBinding = $false)]
@@ -3002,15 +3083,196 @@ function ConvertTo-BitString {
         [Parameter(Position = 2)]
         [ValidateNotNull()]
         [AllowEmptyString()]
-        [string] $HalfByteSeparator = '.'
+        [string] $HalfByteSeparator = '.',
+
+        [Parameter()]
+        [switch] $KeepLeadingZeroBytes,
+
+        [Parameter()]
+        [Alias('t', 'p')]
+        [switch] $Table
     )
     begin {
+        class TableRender {
+            [string[]] $Cells
+            [Builder] $Top
+            [Builder] $Cell
+            [Builder] $Sep
+            [Builder] $Index
+            [string[]] $Gradient
+            hidden [int] $_current
+            hidden [int] $_currentThisLine
+            hidden [PSCmdlet] $_cmdlet
+            hidden [bool] $_needsTableStart = $true
+
+            hidden TableRender([string] $inputString, [PSCmdlet] $cmdlet) {
+                $this.Gradient = (
+                    $this.ColorFromRgb(0x87CEEB),
+                    $this.ColorFromRgb(0x00E3F2),
+                    $this.ColorFromRgb(0x00F4CD),
+                    $this.ColorFromRgb(0x00FF7F),
+                    $this.ColorFromRgb(0x00FF7F),
+                    $this.ColorFromRgb(0xB3D204),
+                    $this.ColorFromRgb(0xEC9D00),
+                    $this.ColorFromRgb(0xFE6347))
+
+                $this.Cells = $inputString.ToCharArray().ForEach('ToString')
+                $this.Top = [Builder]::new($this)
+                $this.Cell = [Builder]::new($this)
+                $this.Sep = [Builder]::new($this)
+                $this.Index = [Builder]::new($this)
+                $this._cmdlet = $cmdlet
+            }
+
+            static [void] Render([string] $inputString, [PSCmdlet] $cmdlet) {
+                [TableRender]::new($inputString, $cmdlet).Render()
+            }
+
+            [string] ColorFromRgb([int] $color) {
+                $blue = $color -band 0xFF
+                $color = $color -shr 8
+
+                $green = $color -band 0xFF
+                $color = $color -shr 8
+
+                $red = $color -band 0xFF
+                $e = [char]0x1b
+                return "$e[38;2;{0};{1};{2}m" -f $red, $green, $blue
+            }
+
+            [void] Render() {
+                for (; $this._current -lt $this.Cells.Length; ($this._current++, $this._currentThisLine++)) {
+                    $this.RenderCurrentCell()
+                }
+            }
+
+            [void] RenderStart() {
+                $this.Top.Color().TopLeft()
+                $this.Cell.Color().Pipe().Reset()
+                $this.Sep.Color().BottomLeft()
+                $this.Index.Append(' ')
+                $this._currentThisLine++
+            }
+
+            [string] GetIndexString() {
+                [int] $int = $this.Cells.Length - 1 - $this._current
+                [string] $string = $int
+                if ($int -gt 99) {
+                    if ($int % 1000 -eq 0) {
+                        $thousands = $int / 1000
+                        $string = '{0}K' -f $thousands
+                    } elseif ($int % 100 -eq 0) {
+                        $hundreds = $int / 100
+                        $string = '{0}H' -f $hundreds
+                    }
+                }
+
+                if ($string.Length -gt 2) {
+                    return $string.Substring($string.Length - 2, 2).
+                        TrimStart([char]'0').
+                        PadLeft(1, '0').
+                        PadLeft(2, ' ')
+                }
+
+                return $string.PadLeft(2, ' ')
+            }
+
+            [void] RenderCurrentCell() {
+                if ($this._needsTableStart) {
+                    $this._needsTableStart = $false
+                    $this.RenderStart()
+                }
+
+                $this.Top.Color().Dash().Dash()
+                $this.Cell.Append(' ').Bit($this.Cells[$this._current])
+                $this.Sep.Color().Dash().Dash()
+                $this.Index.Number($this.GetIndexString())
+                $this._currentThisLine += 2
+
+                $size = $global:Host.UI.RawUI.WindowSize
+
+                if (-not (($this._current + 1) % 8)) {
+                    $this.RenderGroupEnd()
+                    if (($size.Width -le $this._currentThisLine + 27) -or $this._current -eq $this.Cells.Length - 1) {
+                        $this.ProcessLine()
+                    }
+
+                    return
+                }
+
+                $this.Top.DashTop().Reset()
+                $this.Cell.Color().Pipe().Reset()
+                $this.Sep.FourWay().Reset()
+                $this.Index.Reset().Color().Pipe().Reset()
+                $this._currentThisLine += 1
+            }
+
+            [void] RenderGroupEnd() {
+                $this.Top.Color().TopRight().Reset()
+                $this.Cell.Color().Pipe().Reset()
+                $this.Sep.Color().BottomRight().Reset()
+                $this.Index.Append(' ')
+                $this._needsTableStart = $true
+            }
+
+            [void] ProcessLine() {
+                $this._cmdlet.WriteObject(
+                    ($this.Top, $this.Cell, $this.Sep, $this.Index -join [Environment]::NewLine))
+
+                $this.Top.Clear()
+                $this.Cell.Clear()
+                $this.Sep.Clear()
+                $this.Index.Clear()
+                $this._needsTableStart = $true
+                $this._currentThisLine = 0
+            }
+        }
+
+        class Builder {
+            hidden [System.Text.StringBuilder] $_sb
+            hidden [TableRender] $_parent
+
+            Builder([TableRender] $parent) {
+                $this._sb = [System.Text.StringBuilder]::new()
+                $this._parent = $parent
+            }
+
+            [string] ToString() { return $this._sb.ToString() }
+
+            [Builder] Append([string] $value) {
+                $this._sb.Append($value)
+                return $this
+            }
+
+            [Builder] Clear() {
+                $this._sb.Clear()
+                return $this
+            }
+
+            [Builder] Color() { return $this.Append($this._parent.Gradient[$this._parent._current % $this._parent.Gradient.Length]) }
+            [Builder] Reset() { return $this.Append("$([char]0x1b)[0m") }
+            [Builder] TopLeft() { return $this.Append([string][char]0x256d) }
+            [Builder] BottomLeft() { return $this.Append([string][char]0x2570) }
+            [Builder] TopRight() { return $this.Append([string][char]0x256e) }
+            [Builder] BottomRight() { return $this.Append([string][char]0x256f) }
+            [Builder] Dash() { return $this.Append([string][char]0x2500) }
+            [Builder] DashTop() { return $this.Append([string][char]0x252c) }
+            [Builder] DashBottom() { return $this.Append([string][char]0x2534) }
+            [Builder] Pipe() { return $this.Append([string][char]0x2502) }
+            [Builder] PipeLeft() { return $this.Append([string][char]0x251c) }
+            [Builder] PipeRight() { return $this.Append([string][char]0x2524) }
+            [Builder] FourWay() { return $this.Append([string][char]0x253c) }
+            [Builder] Number([string] $i) { return $this.Append((Get-PSReadLineOption).NumberColor).Append($i).Reset() }
+            [Builder] Bit([string] $i) { return $this.Append((Get-PSReadLineOption).NumberColor).Append($i).Reset() }
+        }
+
         $toBytes = [psdelegate]{
             ($a) => { [MemoryMarshal]::AsBytes([MemoryExtensions]::AsSpan($a)).ToArray() }
         }
 
         function GetBinaryString([psobject] $item) {
-            $numeric = number $item
+            # $numeric = number $item
+            $numeric = $item
             if ($null -eq $numeric) {
                 return
             }
@@ -3026,25 +3288,33 @@ function ConvertTo-BitString {
             $bytes = $toBytesCompiled.Invoke($numeric)
             [array]::Reverse($bytes)
 
-            $bits = [convert]::ToString($numeric, <# toBase: #> 2)
-            if ($PSCmdlet.MyInvocation.BoundParameters.ContainsKey((nameof{$Padding}))) {
-                $padAmount = $Padding * 8
-                if ($padAmount -ge $bits.Length) {
-                    return $bits.PadLeft($Padding * 8, [char]'0')
+            $sb = [StringBuilder]::new()
+            $first = $true
+            foreach ($byte in $bytes) {
+                if ($first) {
+                    if (-not $KeepLeadingZeroBytes -and $byte -eq 0) {
+                        continue
+                    }
+
+                    $first = $false
                 }
+
+                $bits = [convert]::ToString($byte, <# toBase: #> 2)
+                $null = $sb.Append($bits.PadLeft(8, [char]'0'))
             }
 
-            $padAmount = 8 - ($bits.Length % 8)
-            if ($padAmount -eq 8) {
-                return $bits
-            }
-
-            return $bits.PadLeft($padAmount + $bits.Length, [char]'0')
+            return $sb.ToString()
         }
     }
     process {
         foreach ($currentItem in $InputObject) {
             $binaryString = GetBinaryString $currentItem
+
+            if ($Table) {
+                # yield
+                [TableRender]::Render($binaryString, $PSCmdlet)
+                continue
+            }
 
             # yield
             $binaryString -replace
@@ -5086,7 +5356,7 @@ __*Attendees*__
     }
 }
 
-function Enter-Pwsh {
+function Enter-NestedPwsh {
     [CmdletBinding()]
     [Alias('nest')]
     param(
@@ -5128,6 +5398,22 @@ function Unlock-Bitwarden {
     param()
     end {
         $env:BW_SESSION = bw unlock --raw
+    }
+}
+
+function Push-GitStash {
+    [Alias('gstash')]
+    [CmdletBinding()]
+    param(
+        [string] $Message
+    )
+    end {
+        # I clearly got distracted here :shrug:
+        $gitArgs = @(
+            '--include-untracked',
+            ''
+        )
+        git stash push
     }
 }
 
@@ -5258,6 +5544,8 @@ $script:LocationAliases = @{
     'dl' = '~\Downloads'
     'doc' = '~\Documents'
     'vim' = '~\.vimfiles'
+    'r' = "$script:ProjectsPath\releasing"
+    'rpwsh' = "$script:ProjectsPath\releasing\PowerShell"
 }
 
 function Resolve-PathAlias {
@@ -6055,12 +6343,216 @@ Register-ArgumentCompleter -CommandName Get-CommandParameter -ParameterName Name
     }
 }
 
+
 Register-ArgumentCompleter -CommandName Set-LocationPlus -ParameterName Name -ScriptBlock $locationAliasCompleter
 Register-ArgumentCompleter -CommandName Resolve-PathAlias -ParameterName Name -ScriptBlock $locationAliasCompleter
 Register-ArgumentCompleter -CommandName Edit-FilePlus -ParameterName Name -ScriptBlock $locationAliasCompleter
 
+function Get-StackTrace {
+    param(
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject
+    )
+    begin {
+        function TryResolveStateMachineMethod {
+            param([MethodBase] $method)
+            end {
+                $type = $method.DeclaringType
+                $default = [pscustomobject]@{
+                    Method = $method
+                    Type = $type
+                    IsResolved = $false
+                    IsAsync = $false
+                }
+
+                if (-not ($type -and $type.IsDefined([Runtime.CompilerServices.CompilerGeneratedAttribute], $false))) {
+                    return $default
+                }
+
+                $default.IsAsync = $type.IsAssignableTo([Runtime.CompilerServices.IAsyncStateMachine])
+                if (-not ($default.IsAsync -or $type.IsAssignableTo([IEnumerator]))) {
+                    return $default
+                }
+
+                [bool] $found = $false
+                [bool] $isResolved = $false
+                foreach ($foundMethod in $type.DeclaringType.GetMethods('DeclaredOnly, Instance, Static, Public, NonPublic')) {
+                    foreach ($attrib in $foundMethod.GetCustomAttributes([Runtime.CompilerServices.StateMachineAttribute], $false)) {
+                        if ($attrib.StateMachineType -ne $type) {
+                            continue
+                        }
+
+                        $found = $true
+                        $isResolved = $isResolved -bor (
+                            $attrib -is [Runtime.CompilerServices.IteratorStateMachineAttribute] -or
+                            $attrib -is [Runtime.CompilerServices.AsyncIteratorStateMachineAttribute])
+                    }
+
+                    if ($found) {
+                        $default.Method = $foundMethod
+                        $default.Type = $foundMethod.DeclaringType
+                        $default.IsResolved = $isResolved
+                        return $default
+                    }
+                }
+
+                return $default
+            }
+        }
+
+        $isLastFrameFromForeignExceptionStackTrace = [StackFrame].GetProperty(
+            'IsLastFrameFromForeignExceptionStackTrace',
+            [BindingFlags]'Instance, Public, NonPublic')
+    }
+    process {
+        if (-not $MyInvocation.ExpectingInput) {
+            $InputObject = $global:Error[0]
+        }
+
+        if (-not $InputObject) {
+            return
+        }
+
+        $exception = $InputObject
+        if ($exception -is [ErrorRecord]) {
+            $exception = $exception.Exception
+        }
+
+        if ($exception -isnot [Exception]) {
+            throw 'Must pipe an Exception or ErrorRecord to this command.'
+        }
+
+        $newExceptionStarted = $false
+        while ($null -ne $exception) {
+            $stackTrace = [StackTrace]::new($exception, $true)
+            foreach ($frame in $stackTrace.GetFrames()) {
+                $column = $frame.GetFileColumnNumber()
+                $line = $frame.GetFileLineNumber()
+                $file = $frame.GetFileName()
+
+                $method = $frame.GetMethod()
+                if ($method.IsDefined([StackTraceHiddenAttribute], $false) -or (
+                    $method.DeclaringType -and $method.DeclaringType.IsDefined([StackTraceHiddenAttribute], $false)))
+                {
+                    continue
+                }
+
+                $caller = TryResolveStateMachineMethod $method
+                $f = [ClassExplorer.Internal._Format]
+                $string = & {
+                    $caller = $caller
+                    $f = $f
+                    $typeString = ''
+                    if ($caller.Type) {
+                        $typeString = $f::Type($caller.Type) + $f::Operator('.')
+                    }
+
+                    $base = $f::Operator('at ') + $typeString +
+                        $f::MemberName($caller.Method.Name) +
+                        $f::Operator('(') + $(
+                            try {
+                                $def = $f::Member($caller.Method)
+                                $def.Substring(($i = $def.IndexOf('(')) + 1, $def.LastIndexOf(')') - $i)
+                            } catch {
+                                $f::Operator('...error...)')
+                            }
+                        ) + $PSStyle.Reset
+
+                    if (-not $file) {
+                        return $base
+                    }
+
+                    return $base + $f::Operator(' in ') +
+                        $PSStyle.FormatHyperlink(($file | Split-Path -Leaf), $file) +
+                        $f::Operator(':line ') +
+                        $f::Number($line)
+                }
+
+                if ($isLastFrameFromForeignExceptionStackTrace -and
+                    $isLastFrameFromForeignExceptionStackTrace.GetValue($frame) -and
+                    -not $caller.IsAsync)
+                {
+                    $string = $string, '--- End of stack trace from previous location ---' -join [Environment]::NewLine
+                }
+
+                if ($newExceptionStarted) {
+                    $newExceptionStarted = $false
+                    $string = ('--- Starting stack trace for ' + $f::Type($exception.GetType()) + ' ---'), $string -join [Environment]::NewLine
+                }
+
+                # yield
+                [PSCustomObject]@{
+                    Column = $column
+                    Line = $line
+                    File = $file
+                    IL = $frame.GetILOffset()
+                    Native = $frame.GetNativeOffset()
+                    Method = $method
+                    Display = $string
+                }
+            }
+
+            $exception = $exception.InnerException
+            $newExceptionStarted = $true
+        }
+    }
+}
+
+function Build-Location {
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromRemainingArguments)]
+        [psobject[]] $AdditionalArguments
+    )
+    end {
+        $AdditionalArguments
+    }
+}
+
+function Update-DotNet {
+    [CmdletBinding()]
+    param()
+    end {
+        $globalFile = Join-Path $global:PWD.ProviderPath global.json
+        if (-not (Test-Path -LiteralPath $globalFile)) {
+            return
+        }
+
+        $version = (Get-Content -LiteralPath $globalFile -Raw -ErrorAction Stop | ConvertFrom-Json).sdk.version
+        $installPath = Join-Path C:\dotnet $version
+        if (-not (Test-Path -LiteralPath $installPath\dotnet.exe)) {
+            dotnet-install.ps1 -Version $version -InstallDir $installPath
+        }
+
+        $vscodeSettingsPath = Join-Path $global:PWD .vscode/settings.json
+        $vscodeSettings = Get-Content -LiteralPath $vscodeSettingsPath -Raw | ConvertFrom-Json
+        if ($vscodeSettings.'omnisharp.dotnetPath' -ne $installPath) {
+            if (-not $vscodeSettings.'omnisharp.dotnetPath') {
+                $vscodeSettings.psobject.Properties.Add(
+                    [psnoteproperty]::new(
+                        'omnisharp.dotnetPath',
+                        $installPath))
+            }
+            else {
+                $vscodeSettings.'omnisharp.dotnetPath' = $installPath
+            }
+
+            $vscodeSettings |
+                ConvertTo-Json |
+                Set-Content -Encoding ([UTF8Encoding]::new()) -LiteralPath $vscodeSettingsPath
+        }
+
+        if ($env:PATH.Contains($installPath)) {
+            return
+        }
+
+        $env:PATH = $installPath + [Path]::PathSeparator + $env:PATH
+    }
+}
+
 if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
     . "$PSScriptRoot\PreviewCommands.ps1"
+    . "$PSScriptRoot\InstallPwshCommands.ps1"
 }
 
 . "$PSScriptRoot\intrinsics.ps1"

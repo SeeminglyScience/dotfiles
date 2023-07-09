@@ -39,6 +39,8 @@ $alias:fms       = 'Format-MemberSignature'
 $alias:eir       = 'Enable-ImpliedReflection'
 $alias:dis       = 'Get-ScriptBlockDisassembly'
 $alias:fet       = 'Format-ExpressionTree'
+$alias:lib       = 'New-CtypesLib'
+$alias:struct    = 'New-CtypesStruct'
 
 # Aliases from Utility.psm1
 # number       = ConvertTo-Number
@@ -102,15 +104,23 @@ $PSDefaultParameterValues['Find-Type:ResolutionMap'] = $PSDefaultParameterValues
 # An added bonus is that we can use "using namespace" statements in "included" files
 # without polluting the global scope.
 & {
+    # Was testing transcripts. Switch the false to true if needed again
+    if ($false -and $global:psEditor -and $PSVersionTable.PSVersion.Major -eq 5) {
+        $transcripts = "$env:USERPROFILE/.transcripts"
+        if (-not (Test-Path -LiteralPath $transcripts)) {
+            $null = New-Item $transcripts -ItemType Directory
+        }
+
+        $file = 'transcript-{0:yyyy-MM-ddTHH-mm-ss}.log' -f (Get-Date)
+        Start-Transcript -LiteralPath $transcripts/$file
+    }
+
     if ($__IsWindows -and $__IsConHost) {
         & "$PSScriptRoot\SetConsoleFont.ps1" -Family 'CaskaydiaCove NF' -Size 20
     }
 
     if ($global:psEditor -and -not $env:DEVELOPING_ESCS) {
-        $escs = Import-Module EditorServicesCommandSuite -PassThru
-        if ($null -ne $escs -and $escs.Version.Major -lt 0.5.0) {
-            Import-EditorCommand -Module EditorServicesCommandSuite
-        }
+        Import-CommandSuite
     }
 
     if ($ibac = Get-Command Invoke-Build.ArgumentCompleters.ps1 -ErrorAction Ignore -CommandType Script) {
@@ -192,4 +202,8 @@ $PSDefaultParameterValues['Find-Type:ResolutionMap'] = $PSDefaultParameterValues
     if (Test-Path $chocoPsm1Path) {
         Import-Module -Global $chocoPsm1Path
     }
+}
+
+if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
+    . "$PSScriptRoot\VT.ps1"
 }

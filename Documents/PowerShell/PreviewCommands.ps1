@@ -1,5 +1,18 @@
-﻿using namespace System.Diagnostics
+﻿using namespace System.Collections.Generic
+using namespace System.Diagnostics
 using namespace System.Management.Automation
+
+function Get-AssemblyLoadContext {
+    [Alias('galc')]
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline, ValueFromPipelineByPropertyName, Mandatory)]
+        [System.Reflection.Assembly] $Assembly
+    )
+    process {
+        [System.Runtime.Loader.AssemblyLoadContext]::GetLoadContext($Assembly)
+    }
+}
 
 function New-PromptBox {
     param([string] $text)
@@ -389,6 +402,10 @@ function Invoke-Fzf {
             $fullArgsLine += " --with-nth $WithNth"
         }
 
+        # if ($PreviewCommand) {
+        #     $fullArgsLine += " --preview `"$PreviewCommand`""
+        # }
+
         $psi = [System.Diagnostics.ProcessStartInfo]@{
             FileName = 'fzf'
             Arguments = $fullArgsLine
@@ -521,6 +538,13 @@ function Show-TypeSearch {
                 }
 
                 if ($_.BaseType -eq [ValueType]) {
+                    # if ($_.CustomAttributes.AttributeType.Name -contains 'IsReadOnlyAttribute') {
+                    #     'readonly'
+                    # }
+
+                    # if ($_.IsByRefLike) {
+                    #     'ref'
+                    # }
 
                     return 'struct'
                 }
@@ -528,6 +552,18 @@ function Show-TypeSearch {
                 if ($_.IsInterface) {
                     return 'interface'
                 }
+
+                # if ($_.IsSealed -and $_.IsAbstract) {
+                #     return 'static class'
+                # }
+
+                # if ($_.IsSealed) {
+                #     return 'sealed class'
+                # }
+
+                # if ($_.IsAbstract) {
+                #     return 'abstract class'
+                # }
 
                 return 'class'
             }) -join ' '
@@ -636,6 +672,9 @@ function Show-MemberSearch {
                     $_.Module.Assembly.Location
                     $_.MetadataToken
                 }
+                # Preview = {
+                #     Format-MemberSignature -InputObject $_
+                # }
             }
             Context = $PSCmdlet
         }
@@ -652,10 +691,15 @@ function Show-MemberSearch {
 }
 
 enum GitUIKind {
-    addrestore
-    status
-    branch
-    commit
+    addrestore = 0
+    status = 1
+    s = 1
+    branch = 2
+    b = 2
+    commit = 3
+    c = 3
+    stash = 4
+    sh = 4
 }
 
 function Show-GitTui {
@@ -672,11 +716,30 @@ function Show-GitTui {
         [string[]] $GitArgs
     )
     end {
-        switch ($Kind) {
-            addrestore { return Show-GitAddRestoreTui @GitArgs }
-            status { return Show-GitStatusTui @GitArgs }
-            branch { return Show-GitBranchTui -NoSearch:(-not $Search) -Multiple @GitArgs }
-            commit { return Show-GitCommitTui -NoSearch:(-not $Search) -Multiple @GitArgs }
+        if ($Kind -eq [GitUIKind]::addrestore) {
+            Show-GitAddRestoreTui @GitArgs
+            return
+        }
+
+        if ($Kind -eq [GitUIKind]::status) {
+            Show-GitStatusTui @GitArgs
+            return
+        }
+
+        if ($Kind -eq [GitUIKind]::branch) {
+            Show-GitBranchTui -NoSearch:(-not $Search) -Multiple @GitArgs
+            return
+        }
+
+        if ($Kind -eq [GitUIKind]::commit) {
+            Show-GitCommitTui -NoSearch:(-not $Search) -Multiple @GitArgs
+            return
+        }
+
+        if ($Kind -eq [GitUIKind]::stash) {
+            if (-not $GitArgs.Length -or ($GitArgs)?[0] -eq '-m') {
+                git stash push --include-untracked
+            }
         }
     }
 }
@@ -760,6 +823,7 @@ function Show-GitBranchTui {
             Prompt = (New-PromptBox branch)
         }
 
+        $PSNativeCommandArgumentPassing = 'Legacy'
         git -c color.branch=always branch -a @GitArgs
             | & { process { $_ -replace 'remotes/' }}
             | Invoke-Fzf @invokeFzfSplat
@@ -828,6 +892,7 @@ function Show-GitStatusTui {
         }
     }
     end {
+        $PSNativeCommandArgumentPassing = 'Legacy'
         $invokeFzfSplat = @{
             Format = { $_.Display, $_.File, $null }
             AdditionalArguments = '--preview-window="right:70%" --preview "git diff HEAD --color=always -- {-2} | sed 1,4d" --exit-0'
@@ -859,5 +924,680 @@ function Show-GitStatusTui {
                 MakeObj $isStaged ($status -replace '\.') $path $display
             }
         } | Invoke-Fzf @invokeFzfSplat
+
+        # if ($Preserve) {
+        #     return $results
+        # }
+
+        # $results | & { process {
+        #         $null, $file = $_.Trim() -split ' +', 2
+
+        #         return $file.Trim('"')
+        #     }}
+    }
+}
+
+function Show-GitStashTui {
+    param(
+        [string] $Prompt = (New-PromptBox Stash),
+
+        [Parameter(Position = 0, ValueFromRemainingArguments)]
+        [string[]] $GitArgs
+    )
+    begin {
+        function MakeObj {
+            param(
+                [int] $index,
+                [string] $message,
+                [string] $display
+            )
+            end {
+                $obj = [PSCustomObject]@{
+                    Index = $index
+                    Message = $message
+                    Display = $display
+                }
+
+                $obj.psobject.Methods.Add([psscriptmethod]::new('ToString', { $this.Display }))
+                $obj.psobject.Members.Add(
+                    [System.Management.Automation.PSMemberSet]::new(
+                        'PSStandardMembers',
+                        [System.Management.Automation.PSMemberInfo[]](
+                            [System.Management.Automation.PSPropertySet]::new(
+                                'DefaultDisplayPropertySet',
+                                [string[]]('Index', 'Message')))))
+
+                return $obj
+            }
+        }
+    }
+    end {
+        $previewWindow = $Host.UI.RawUI.WindowSize.Height -lt 20 ?
+            'right:50%' :
+            'top:75%'
+            # AdditionalArguments = (
+            #     '--preview "git -c color.ui=always diff {3}^^^^! | sed \"/^\x1b\[1m---/d;/^\x1b\[1mindex/d;/^\x1b\[1mdiff --/d;s@^\x1b\[1m+++ .*/@=== @gm\""',
+            #     "--preview-window `"$previewWindow`"") -join ' '
+        $PSNativeCommandArgumentPassing = 'Legacy'
+        $invokeFzfSplat = @{
+            Format = { $_.Id, $_.Message, $null }
+            AdditionalArguments = "--preview-window=`"$previewWindow`" " + '--preview "git -c color.ui=always stash show -p {1} | sed \"/^\x1b\[1m---/d;/^\x1b\[1mindex/d;/^\x1b\[1mdiff --/d;s@^\x1b\[1m+++ .*/@=== @gm\"" --exit-0'
+            Height = 90
+            NoSearch = $true
+            Prompt = $Prompt
+            WithNth = '2..'
+        }
+
+        & {
+            $textResults = @(git stash list @GitArgs)
+            for ($i = 0; $i -lt $textResults.Length; $i++) {
+                $display, $message = $textResults[$i] -split ': ', 2
+                $id = $display -replace '(stash@\{|\})', ''
+
+                MakeObj $index $message $display
+            }
+        } | Invoke-Fzf @invokeFzfSplat
+    }
+}
+
+function Show-WatchPanel {
+    param(
+        [Parameter()]
+        [string] $Header,
+
+        [Parameter()]
+        [object] $State = @{},
+
+        [Parameter()]
+        [scriptblock] $Getter,
+
+        [Parameter()]
+        [scriptblock] $Init,
+
+        [Parameter()]
+        [timespan] $Interval = [timespan]::FromSeconds(10)
+    )
+    clean {
+        # Ugh, you can't scroll in an alternate screen buffer without implementing it yourself
+        # aaand I'm only ever going to use this in a dedicated window soooo...
+        # [Console]::Write("`e[?1049l")
+        [Console]::Write("`e[?25h")
+        Clear-Host
+    }
+    begin {
+        # [Console]::Write("`e[?1049h")
+        Clear-Host
+        [Console]::Write("`e[?25l")
+        if ($Header) {
+            Write-Host $Header
+        }
+        $variables = [List[psvariable]][psvariable]::new('this', $State)
+        $State['AlreadyReturnedIds'] = [HashSet[int]]::new()
+
+        function MaybeWriteResults {
+            param($Results, $State, $UniqueIdGetter)
+            end {
+                if (-not $Results) {
+                    return
+                }
+
+                if ($UniqueIdGetter) {
+                    $Results = foreach ($result in $Results) {
+                        $id = $UniqueIdGetter.InvokeWithContext(
+                            $null,
+                            [List[psvariable]][psvariable]::new('_', $result))
+
+                        if (-not $id -or $id.Count -gt 1 -or -not $id[0] -as [int]) {
+                            throw [ErrorRecord]::new(
+                                [PSInvalidOperationException]::new('Could not obtain unique ID a result.'),
+                                'NoUniqueId',
+                                [ErrorCategory]::InvalidData,
+                                $result)
+                        }
+
+                        if (-not $State['AlreadyReturnedIds'].Add($id[0])) {
+                            continue
+                        }
+
+                        # yield to $Results
+                        $result
+                    }
+                }
+
+                $lines = @($Results | Out-AnsiFormatting -Stream)
+                [array]::Reverse($lines)
+                foreach ($line in $lines) {
+                    [Console]::Write("`e[1;1f")
+                    [Console]::Write("`e[1L")
+                    [Console]::Write($line)
+                }
+            }
+        }
+    }
+    end {
+        $State['LastUpdated'] = $null
+        if ($Init) {
+            $results = $Init.InvokeWithContext($null, [List[psvariable]]::new($variables))
+            $State['LastUpdated'] = Get-Date -AsUTC
+            MaybeWriteResults $results $State $UniqueIdGetter
+
+            Start-Sleep -Milliseconds $Interval.TotalMilliseconds
+        }
+
+
+        [Console]::Write("`e[1;1f")
+        while ($true) {
+            $results = $Getter.InvokeWithContext($null, [List[psvariable]]::new($variables))
+            $State['LastUpdated'] = Get-Date -AsUTC
+            MaybeWriteResults $results $State $UniqueIdGetter
+
+            Start-Sleep -Milliseconds $Interval.TotalMilliseconds
+        }
+    }
+}
+
+function Watch-InvolvedIssue {
+    $splat = @{
+        Involved = $true
+        State = 'Open'
+    }
+
+    Show-WatchPanel `
+        -Init { Find-Issue @splat } `
+        -Getter { Find-Issue @splat -UpdatedSince $this.LastUpdated } `
+        -Interval ([timespan]::FromMinutes(5))
+}
+
+function Watch-PsesIssue {
+    $splat = @(
+        '--repo', 'PowerShell/vscode-powershell,PowerShell/PowerShellEditorServices'
+    )
+
+    Show-WatchPanel `
+        -Init { Find-Issue @splat } `
+        -Getter { Find-Issue @splat -UpdatedSince $this.LastUpdated } `
+        -Interval ([timespan]::FromMinutes(5))
+}
+
+function Watch-ReviewRequested {
+    $splat = @{
+        ReviewRequested = $true
+        State = 'Open'
+    }
+
+    Show-WatchPanel `
+        -Init { Find-PullRequest @splat } `
+        -Getter { Find-PullRequest @splat -UpdatedSince $this.LastUpdated } `
+        -Interval ([timespan]::FromMinutes(5))
+}
+
+function Get-GithubLabelDisplay {
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Color,
+
+        [Parameter(ValueFromPipelineByPropertyName)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Name
+    )
+    begin {
+        $re = $PSStyle.Reset
+    }
+    process {
+        $color = [int]('0x' + $Color)
+        $b = [byte]($color -band 0xFF)
+        $g = [byte]($color -shr 8 -band 0xFF)
+        $r = [byte]($color -shr 16 -band 0xFF)
+
+        $primaryR = [Math]::Min(($r * 1.8), 255)
+        $primaryG = [Math]::Min(($g * 1.8), 255)
+        $primaryB = [Math]::Min(($b * 1.8), 255)
+
+        $secondaryR = [Math]::Min(($r * 0.33), 255)
+        $secondaryG = [Math]::Min(($g * 0.33), 255)
+        $secondaryB = [Math]::Min(($b * 0.33), 255)
+
+        $bgPrimary = $PSStyle.Background.FromRgb($primaryR, $primaryG, $primaryB)
+        $fgPrimary = $PSStyle.Foreground.FromRgb($primaryR, $primaryG, $primaryB)
+        $bgSecondary = $PSStyle.Background.FromRgb($secondaryR, $secondaryG, $secondaryB)
+        $fgSecondary = $PSStyle.Foreground.FromRgb($secondaryR, $secondaryG, $secondaryB)
+
+        return "$fgSecondary`u{e0d4}$fgPrimary$bgSecondary $Name $re$fgSecondary`u{e0b0}$re"
+    }
+}
+function Find-Issue {
+    [Alias('fiis')]
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(ValueFromRemainingArguments)]
+        [string[]] $ArgumentList,
+
+        [Parameter()]
+        [ValidateSet('Open', 'Closed')]
+        [string] $State,
+
+        [Parameter()]
+        [string[]] $Filter,
+
+        [Parameter()]
+        [datetime] $UpdatedSince,
+
+        [Parameter()]
+        [switch] $Involved
+    )
+    end {
+        $PSNativeCommandArgumentPassing = 'Legacy'
+        $properties =
+            'assignees', 'author', 'authorAssociation', 'body',
+            'closedAt', 'commentsCount', 'createdAt', 'id', 'isLocked',
+            'isPullRequest', 'labels', 'number', 'repository', 'state',
+            'title', 'updatedAt', 'url'
+
+        $argList = ('--json', ($properties -join ','), '--sort', 'updated')
+
+        $queries = @($Filter)
+        $queryTemplate = 'map(select({0}))'
+
+
+        if ($PSBoundParameters.ContainsKey((nameof{$UpdatedSince}))) {
+            $queries += ('((.updatedAt | fromdate) > ("{0}" | fromdate))' -f (
+                $UpdatedSince.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'")))
+        }
+
+        if ($Involved) {
+            $argList += '--involves=@me'
+        }
+
+        if ($State) {
+            $argList += '--state={0}' -f $State.ToLowerInvariant()
+        }
+
+        if ($queries) {
+            $fullQuery = ($queries -match '.') -join ' and ' -replace '"', '\"'
+            $argList += '--jq', ($queryTemplate -f $fullQuery)
+        }
+
+        $argList += $ArgumentList
+
+        # gh search issues @argList
+        gh search issues @argList | ConvertFrom-Json | & { process {
+            $PSItem.updatedAt = $PSItem.updatedAt.ToLocalTime()
+            $PSItem.createdAt = $PSItem.createdAt.ToLocalTime()
+            $PSItem.closedAt = $PSItem.closedAt.ToLocalTime()
+            $PSItem.pstypenames.Insert(0, 'Utility.Issue')
+            $PSItem
+        }}
+    }
+}
+
+function Find-PullRequest {
+    [Alias('fipr')]
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(ValueFromRemainingArguments)]
+        [string[]] $ArgumentList,
+
+        [Parameter()]
+        [ValidateSet('Open', 'Closed', 'Merged', 'Draft')]
+        [string] $State,
+
+        [Parameter()]
+        [string[]] $Filter,
+
+        [Parameter()]
+        [datetime] $UpdatedSince,
+
+        [Parameter()]
+        [switch] $ReviewRequested,
+
+        [Parameter()]
+        [switch] $IncludeBots
+    )
+    end {
+        $PSNativeCommandArgumentPassing = 'Legacy'
+        $properties =
+            'assignees', 'author', 'authorAssociation', 'body', 'closedAt',
+            'commentsCount', 'createdAt', 'id', 'isLocked', 'labels', 'number',
+            'repository', 'state', 'title', 'updatedAt', 'url'
+
+        $argList = ('--json', ($properties -join ','), '--sort', 'updated')
+
+        $queries = @($Filter)
+        $queryTemplate = 'map(select({0}))'
+
+        if (-not $IncludeBots) {
+            $queries += '.author.type != "Bot"'
+        }
+
+        if ($PSBoundParameters.ContainsKey((nameof{$UpdatedSince}))) {
+            $queries += ('((.updatedAt | fromdate) > ("{0}" | fromdate))' -f (
+                $UpdatedSince.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'")))
+        }
+
+        if ($State -eq 'merged') {
+            $argList += '--merged'
+        } elseif ($State -eq 'draft') {
+            $argList += '--draft'
+        } elseif ($State) {
+            $argList += '--state={0}' -f $State.ToLowerInvariant()
+        }
+
+        if ($ReviewRequested) {
+            $argList += '--review-requested=@me'
+        }
+
+        if ($queries) {
+            $fullQuery = ($queries -match '.') -join ' and ' -replace '"', '\"'
+            $argList += '--jq', ($queryTemplate -f $fullQuery)
+        }
+
+        $argList += $ArgumentList
+
+        # gh search prs @argList
+        gh search prs @argList | ConvertFrom-Json | & { process {
+            $PSItem.updatedAt = $PSItem.updatedAt.ToLocalTime()
+            $PSItem.createdAt = $PSItem.createdAt.ToLocalTime()
+            $PSItem.closedAt = $PSItem.closedAt.ToLocalTime()
+            $PSItem.pstypenames.Insert(0, 'Utility.PullRequest')
+            $PSItem
+        }}
+    }
+}
+
+function New-Allocation {
+    [Alias('alloc')]
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0)]
+        [int] $Length,
+
+        [Parameter(Position = 1)]
+        [type] $Type,
+
+        [Parameter()]
+        [switch] $CoTaskMem
+    )
+    end {
+        $cb = $Length
+        if ($Type) {
+            $cb = $cb * [System.Runtime.InteropServices.Marshal]::SizeOf([type]$Type)
+        }
+
+        if ($CoTaskMem) {
+            return [System.Runtime.InteropServices.Marshal]::AllocCoTaskMem($cb)
+        }
+
+        return [System.Runtime.InteropServices.Marshal]::AllocHGlobal($cb)
+    }
+}
+
+function Revoke-Allocation {
+    [CmdletBinding()]
+    [Alias('free')]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [IntPtr] $Pointer,
+
+        [Parameter()]
+        [switch] $CoTaskMem,
+
+        [Parameter()]
+        [switch] $Bstr
+    )
+    end {
+        if ($CoTaskMem) {
+            [System.Runtime.InteropServices.Marshal]::FreeCoTaskMem($Pointer)
+            return
+        }
+
+        if ($Bstr) {
+            [System.Runtime.InteropServices.Marshal]::FreeBSTR($Pointer)
+            return
+        }
+
+        [System.Runtime.InteropServices.Marshal]::FreeHGlobal($Pointer)
+    }
+}
+
+enum StringMarshalType {
+    None
+    Ansi
+    BStr
+    Unicode
+    Utf8
+}
+
+function Read-Memory {
+    [CmdletBinding(PositionalBinding = $false)]
+    [Alias('read')]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [IntPtr] $Pointer,
+
+        [Parameter(Mandatory, Position = 1, ParameterSetName = 'Single')]
+        [ArgumentCompleter([ClassExplorer.TypeFullNameArgumentCompleter])]
+        [Alias('as')]
+        [type] $Type,
+
+        [Parameter(Position = 2, ParameterSetName = 'Single')]
+        [StringMarshalType] $StringMarshalType,
+
+        [Parameter()]
+        [Alias('o')]
+        [int] $Offset,
+
+        [Parameter(ParameterSetName = 'Block')]
+        [Alias('c')]
+        [int] $Count
+    )
+    end {
+        $Pointer = [IntPtr]::Add($Pointer, $Offset)
+
+        if ($PSCmdlet.ParameterSetName -eq 'Block') {
+            $block = [byte[]]::new($Count)
+            for ($i = 0; $i -lt $Count; $i++) {
+                $block[$i] = [System.Runtime.InteropServices.Marshal]::ReadByte(
+                    [IntPtr]::Add($Pointer, $i))
+            }
+
+            return ,$block
+        }
+
+        if ($Type -eq [string]) {
+            if ($StringMarshalType -eq [StringMarshalType]::Ansi) {
+                return [System.Runtime.InteropServices.Marshal]::PtrToStringAnsi($Pointer)
+            }
+
+            if ($StringMarshalType -eq [StringMarshalType]::BStr) {
+                return [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($Pointer)
+            }
+
+            if ($StringMarshalType -eq [StringMarshalType]::Utf8) {
+                return [System.Runtime.InteropServices.Marshal]::PtrToStringUTF8($Pointer)
+            }
+
+            return [System.Runtime.InteropServices.Marshal]::PtrToStringUni($Pointer)
+        }
+
+        if ([type] -eq [byte]) {
+            return [System.Runtime.InteropServices.Marshal]::ReadByte($Pointer)
+        }
+
+        if ([type] -eq [short]) {
+            return [System.Runtime.InteropServices.Marshal]::ReadInt16($Pointer)
+        }
+
+        if ([type] -eq [int]) {
+            return [System.Runtime.InteropServices.Marshal]::ReadInt32($Pointer)
+        }
+
+        if ([type] -eq [long]) {
+            return [System.Runtime.InteropServices.Marshal]::ReadInt64($Pointer)
+        }
+
+        if ([type] -eq [IntPtr]) {
+            return [System.Runtime.InteropServices.Marshal]::ReadIntPtr($Pointer)
+        }
+
+        return [System.Runtime.InteropServices.Marshal]::PtrToStructure($Pointer, [type]$Type)
+    }
+}
+
+function New-MarshalledString {
+    [CmdletBinding()]
+    [Alias('marshal')]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [string] $Value,
+
+        [Parameter(Position = 1)]
+        [StringMarshalType] $MarshalType,
+
+        [Parameter()]
+        [switch] $CoTaskMem
+    )
+    end {
+        if ($MarshalType -eq [StringMarshalType]::BStr) {
+            return [System.Runtime.InteropServices.Marshal]::StringToBSTR($Value)
+        }
+
+        if ($CoTaskMem) {
+            if ($MarshalType -eq [StringMarshalType]::Ansi) {
+                return [System.Runtime.InteropServices.Marshal]::StringToCoTaskMemAnsi($Value)
+            }
+
+            if ($MarshalType -eq [StringMarshalType]::Utf8) {
+                return [System.Runtime.InteropServices.Marshal]::StringToCoTaskMemUTF8($Value)
+            }
+
+            return [System.Runtime.InteropServices.Marshal]::StringToCoTaskMemUni($Value)
+        }
+
+        if ($MarshalType -eq [StringMarshalType]::Ansi) {
+            return [System.Runtime.InteropServices.Marshal]::StringToHGlobalAnsi($Value)
+        }
+
+        if ($MarshalType -eq [StringMarshalType]::Utf8) {
+            return [System.Runtime.InteropServices.Marshal]::StringToHGlobalUTF8($Value)
+        }
+
+        return [System.Runtime.InteropServices.Marshal]::StringToHGlobalUni($Value)
+    }
+}
+
+function Write-Memory {
+    [CmdletBinding(PositionalBinding = $false)]
+    [Alias('put')]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [IntPtr] $Pointer,
+
+        [Parameter(Mandatory, Position = 1)]
+        [object] $Value,
+
+        [Parameter()]
+        [ArgumentCompleter([ClassExplorer.TypeFullNameArgumentCompleter])]
+        [Alias('as')]
+        [type] $Type,
+
+        [Parameter()]
+        [Alias('o')]
+        [int] $Offset
+    )
+    end {
+        if (-not $Type) {
+            if ($Value -is [array]) {
+                $Type = $Value[0].GetType()
+            } else {
+                $Type = $Value.GetType()
+            }
+        }
+
+        $Pointer = [IntPtr]::Add($Pointer, $Offset)
+        if ($Type -in [string[]], [string]) {
+            throw
+        }
+
+        $size = [System.Runtime.InteropServices.Marshal]::SizeOf([type]$Type)
+        $i = 0
+        foreach ($singleValue in $Value) {
+            if ([type] -eq [byte]) {
+                [System.Runtime.InteropServices.Marshal]::WriteByte($Pointer, $i, $singleValue)
+                $i += $size
+                continue
+            }
+
+            if ([type] -eq [short]) {
+                [System.Runtime.InteropServices.Marshal]::WriteInt16($Pointer, $i, $singleValue)
+                $i += $size
+                continue
+            }
+
+            if ([type] -eq [int]) {
+                [System.Runtime.InteropServices.Marshal]::WriteInt32($Pointer, $i, $singleValue)
+                $i += $size
+                continue
+            }
+
+            if ([type] -eq [long]) {
+                [System.Runtime.InteropServices.Marshal]::WriteInt64($Pointer, $i, $singleValue)
+                $i += $size
+                continue
+            }
+
+            if ([type] -eq [IntPtr]) {
+                [System.Runtime.InteropServices.Marshal]::WriteIntPtr($Pointer, $i, $singleValue)
+                $i += $size
+                continue
+            }
+
+            [System.Runtime.InteropServices.Marshal]::StructureToPtr(
+                [object][LanguagePrimitives]::ConvertTo($singleValue, $Type),
+                [IntPtr]::Add($Pointer, $i),
+                $true)
+
+            $i += $size
+        }
+    }
+}
+
+function Clear-Memory {
+    [CmdletBinding()]
+    [Alias('zero')]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [IntPtr] $Pointer,
+
+        [Parameter(Mandatory, Position = 1)]
+        [int] $Size,
+
+        [Parameter(Position = 3)]
+        [ArgumentCompleter([ClassExplorer.TypeFullNameArgumentCompleter])]
+        [Alias('as')]
+        [type] $Type
+    )
+    end {
+        if ($Type) {
+            $Size = $Size * [System.Runtime.InteropServices.Marshal]::SizeOf([type]$Type)
+        }
+
+        for ($i = 0; $i -lt $Size; $i++) {
+            [System.Runtime.InteropServices.Marshal]::WriteByte($Pointer, $i, 0)
+        }
+    }
+}
+
+function Get-MarshalledSize {
+    [CmdletBinding()]
+    [Alias('size')]
+    param(
+        [Parameter(Position = 0)]
+        [ArgumentCompleter([ClassExplorer.TypeFullNameArgumentCompleter])]
+        [type] $Type
+    )
+    end {
+        return [System.Runtime.InteropServices.Marshal]::SizeOf([type]$Type)
     }
 }

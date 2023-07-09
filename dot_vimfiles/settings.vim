@@ -1,3 +1,4 @@
+set incsearch ignorecase smartcase hlsearch
 if !exists('g:vscode')
 
 let g:python_host_prog = 'C:\Python27\python.exe'
@@ -6,7 +7,6 @@ let g:python3_host_prog = 'C:\Program Files (x86)\Python37-32\python.exe'
 filetype plugin on
 filetype indent on
 set tabstop=4 softtabstop=4 shiftwidth=4 expandtab smarttab autoindent
-set incsearch ignorecase smartcase hlsearch
 set ruler laststatus=2 showcmd showmode
 set list listchars=trail:»,tab:»-
 set fillchars+=vert:\

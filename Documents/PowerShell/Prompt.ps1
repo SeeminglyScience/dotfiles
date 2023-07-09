@@ -297,7 +297,7 @@ function global:prompt {
         # Guess at provider path length
         30)
 
-    # Change title to (!)(Win )PowerShell - {PID} - {CurrentLocation}
+    # Change title to (!)(Win|Dev )PowerShell - {PID} - {CurrentLocation}
     $null = & {
         if ($promptBuilder::s_isElevated) {
             $sb.Append('!')
@@ -306,6 +306,11 @@ function global:prompt {
         if (-not $IsCoreClr) {
             $sb.Append('Win ')
         }
+
+        if ($PSVersionTable.PSVersion.PreReleaseLabel -eq 'preview.99') {
+            $sb.Append('Dev ')
+        }
+
         $sb.Append('PowerShell')
         $sb.Append(' - ').Append($PID).Append(' - ').Append($PWD.ProviderPath)
     }
