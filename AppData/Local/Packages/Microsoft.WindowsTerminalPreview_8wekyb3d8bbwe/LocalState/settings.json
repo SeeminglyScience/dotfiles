@@ -6,24 +6,16 @@
         {
             "command":
             {
-                "action": "openSettings"
-            },
-            "keys": "ctrl+comma"
-        },
-        // {
-        //     "command": "unbound",
-        //     "keys": "ctrl+shift+,"
-        // },
-        // {
-        //     "command": "unbound",
-        //     "keys": "ctrl+,"
-        // },
-        {
-            "command":
-            {
                 "action": "nextTab"
             },
             "keys": "ctrl+tab"
+        },
+        {
+            "command":
+            {
+                "action": "openSettings"
+            },
+            "keys": "ctrl+comma"
         },
         {
             "command": "unbound",
@@ -132,15 +124,15 @@
             "keys": "ctrl+shift+tab"
         },
         {
+            "command": "scrollUpPage",
+            "keys": "ctrl+shift+pgup"
+        },
+        {
             "command":
             {
                 "action": "scrollDown"
             },
             "keys": "ctrl+shift+down"
-        },
-        {
-            "command": "scrollUpPage",
-            "keys": "ctrl+shift+pgup"
         },
         {
             "command":
@@ -261,10 +253,10 @@
                 "source": "Windows.Terminal.Azure"
             },
             {
-                "guid": "{16208362-94fc-5b1f-a491-5b2624d5ab56}",
+                "guid": "{a3a2e83a-884a-5379-baa8-16f193a13b21}",
                 "hidden": false,
-                "name": "Visual Studio Debug Console",
-                "source": "VSDebugConsole"
+                "name": "PowerShell 7 Preview",
+                "source": "Windows.Terminal.PowershellCore"
             }
         ]
     },
@@ -476,6 +468,29 @@
             "selectionBackground": "#FFFFFF",
             "white": "#D3D7CF",
             "yellow": "#C4A000"
+        },
+        {
+            "background": "#300A24",
+            "black": "#171421",
+            "blue": "#0037DA",
+            "brightBlack": "#767676",
+            "brightBlue": "#08458F",
+            "brightCyan": "#2C9FB3",
+            "brightGreen": "#26A269",
+            "brightPurple": "#A347BA",
+            "brightRed": "#C01C28",
+            "brightWhite": "#F2F2F2",
+            "brightYellow": "#A2734C",
+            "cursorColor": "#FFFFFF",
+            "cyan": "#3A96DD",
+            "foreground": "#FFFFFF",
+            "green": "#26A269",
+            "name": "Ubuntu-ColorScheme",
+            "purple": "#881798",
+            "red": "#C21A23",
+            "selectionBackground": "#FFFFFF",
+            "white": "#CCCCCC",
+            "yellow": "#A2734C"
         },
         {
             "background": "#000000",
