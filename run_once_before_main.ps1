@@ -82,12 +82,10 @@ end {
         [Environment]::SetEnvironmentVariable($kvp.Name, $kvp.Value, [EnvironmentVariableTarget]::User)
     }
 
-    & "$env:ProgramFiles\PowerShell\7\pwsh.exe" -NoProfile {
-        if ((Import-Module PowerShellGet -PassThru).Version.Major -ge 3) {
-            return
+    if (-not (Get-Module -ListAvailable Microsoft.PowerShell.PSResourceGet)) {
+        & "$env:ProgramFiles\PowerShell\7\pwsh.exe" -NoProfile {
+            Install-Module Microsoft.PowerShell.PSResourceGet -Scope CurrentUser -AllowPrerelease -SkipPublisherCheck
         }
-
-        Install-Module PowerShellGet -Scope CurrentUser -AllowPrerelease -Force -AllowClobber -SkipPublisherCheck -MinimumVersion 3.0.0
     }
 
     & "$env:ProgramFiles\PowerShell\7\pwsh.exe" -NoProfile {
