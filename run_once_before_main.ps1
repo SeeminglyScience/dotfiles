@@ -75,6 +75,7 @@ end {
         'LESSCHARSET' = 'utf-8'
         'CLASS_EXPLORER_TRUE_CHARACTER' = [char]0x2713 # check mark
         'BAT_THEME' = 'Visual Studio Dark+'
+        'BAT_PAGER' = 'less --quiet --raw-control-chars --quit-on-intr --ignore-case --prompt : --no-init --chop-long-lines'
     }
 
     foreach ($kvp in $env.GetEnumerator()) {
@@ -104,7 +105,9 @@ end {
             'PSLambda',
             'PSScriptAnalyzer',
             'ThreadJob',
-            'PSEverything')
+            'PSEverything',
+            'Microsoft.PowerShell.SecretManagement',
+            'Microsoft.PowerShell.SecretStore')
 
         $existingModules = Get-Module -ListAvailable |
             Group-Object Name |

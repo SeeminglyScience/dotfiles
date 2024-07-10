@@ -2772,10 +2772,10 @@ function Invoke-Conditional {
 
         if ($isTrue) {
             if ($null -ne $onTrue) {
-                & $onTrue
+                return & $onTrue
             }
 
-            return
+            return $firstObject
         }
 
         return & $onFalse
