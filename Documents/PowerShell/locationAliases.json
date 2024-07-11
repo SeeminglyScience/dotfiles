@@ -1,0 +1,14 @@
+{
+    "Captures": "~/Videos/Captures",
+    "ps": "~/Documents/PowerShell",
+    "gpg": "~/scoop/persist/gpg/home",
+    "chez": "~/.local/share/chezmoi",
+    "pwsh": "{projects}/PowerShell",
+    "pses": "{projects}/PowerShellEditorServices",
+    "ce": "{projects}/ClassExplorer",
+    "dl": "~/Downloads",
+    "doc": "~/Documents",
+    "vim": "~/.vimfiles",
+    "r": "{projects}/releasing",
+    "rpwsh": "{projects}/releasing/PowerShell"
+}

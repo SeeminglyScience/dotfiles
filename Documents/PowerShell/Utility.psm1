@@ -111,12 +111,16 @@ class EncodingArgumentConverterAttribute : ArgumentTransformationAttribute {
 
 class CommandInfoArgumentConverterAttribute : ArgumentTransformationAttribute {
     [object] Transform([EngineIntrinsics] $engineIntrinsics, [object] $inputData) {
-        if ($inputData -is [CommandInfo]) {
-            return $inputData
+        $command = $inputData
+        if ($inputData -isnot [CommandInfo]) {
+            $command = Get-Command ([string]$inputData) | Select-Object -First 1
         }
 
-        $asString = [string]$inputData
-        return Get-Command $asString | Select-Object -First 1
+        while ($command -is [AliasInfo]) {
+            $command = Get-Command $command.Definition -ErrorAction Ignore | Select-Object -First 1
+        }
+
+        return $command
     }
 }
 
@@ -5548,20 +5552,110 @@ $script:LocationAliases = @{
     'rpwsh' = "$script:ProjectsPath\releasing\PowerShell"
 }
 
+$script:Never = [datetime]::new(0)
+
+
+$LocationAliasCache = @{
+    LastUpdateTime = [datetime]::new(0)
+    Aliases = @{}
+}
+
+function Edit-ChezmoiFile {
+    [Alias('edit')]
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [ValidateNotNullOrEmpty()]
+        [string] $Path
+    )
+    end {
+        $resolvedPath = (Resolve-Path (Resolve-PathAlias $Path -RootPath '~')).ProviderPath
+        if (-not $resolvedPath) {
+            return
+        }
+
+        chezmoi edit $resolvedPath
+        chezmoi apply $resolvedPath --verbose
+    }
+}
+
+function Get-LocationAlias {
+    [OutputType([hashtable])]
+    [CmdletBinding()]
+    param()
+    end {
+        class Expander {
+            static [string] $Pattern = '\{(?<Key>[a-z]+)\}'
+
+            [hashtable] $Table
+
+            [void] Expand([string] $key) {
+                $value = $this.Table[$key]
+                $value = [regex]::Replace(
+                    $value,
+                    $this::Pattern,
+                    {
+                        param([Match] $match)
+                        end {
+                            $name = $match.Groups['Key'].Value
+                            if ($name -eq 'projects') {
+                                return $script:ProjectsPath -replace '\\', '/'
+                            }
+
+                            if (-not $this.Table.ContainsKey($name)) {
+                                return '';
+                            }
+
+                            $this.Expand($name)
+                            return $this.Table[$name]
+                        }
+                    },
+                    [RegexOptions]::CultureInvariant -bor 'IgnoreCase')
+
+                $this.Table[$key] = $value
+            }
+        }
+
+        $cache = $LocationAliasCache
+        $cacheFile = Get-Item -LiteralPath "$PSScriptRoot/locationAliases.json" -ErrorAction Ignore
+        if (-not $cacheFile) {
+            return @{}
+        }
+
+        if ($cacheFile.LastWriteTime -le $cache.LastUpdateTime) {
+            return $cache.Aliases
+        }
+
+        $cacheFile.LastWriteTime = [datetime]::Now
+        $cacheContent = Get-Content -Raw -LiteralPath $cacheFile.FullName | ConvertFrom-Json -AsHashtable
+        $expander = [Expander]@{ Table = $cacheContent }
+        foreach ($key in @($cacheContent.get_Keys())) {
+            $expander.Expand($key)
+        }
+
+        return $cache.Aliases = $cacheContent
+    }
+}
+
 function Resolve-PathAlias {
     [Alias('repa')]
     [OutputType([string])]
-    [CmdletBinding()]
+    [CmdletBinding(PositionalBinding = $false)]
     param(
-        [Parameter(ValueFromPipeline)]
+        [Parameter(ValueFromPipeline, Position = 0)]
         [AllowNull()]
         [AllowEmptyString()]
-        [string] $Name
+        [string] $Name,
+
+        [Parameter()]
+        [string] $RootPath
     )
     process {
-        $projectsPath = $script:ProjectsPath
+        if (-not $RootPath) {
+            $RootPath = $script:ProjectsPath
+        }
         if (-not $Name -and -not $MyInvocation.ExpectingInput) {
-            return $projectsPath
+            return $RootPath
         }
 
         if ($Name -in 'other', 'o') {
@@ -5572,10 +5666,10 @@ function Resolve-PathAlias {
                 return Join-Path $directory -ChildPath 'vscode-powershell'
             }
 
-            return Join-Path $projectsPath -ChildPath 'PowerShellEditorServices'
+            return Join-Path $RootPath -ChildPath 'PowerShellEditorServices'
         }
 
-        $locationAliases = $script:LocationAliases
+        $locationAliases = Get-LocationAlias
         $first, $rest = $Name -split '[\\/]'
         if ($resolvedAlias = $locationAliases[$first]) {
             $resolvedPath = $resolvedAlias
@@ -5588,7 +5682,7 @@ function Resolve-PathAlias {
             return $resolvedPath
         }
 
-        return Join-Path $projectsPath -ChildPath $Name
+        return Join-Path $RootPath -ChildPath $Name
     }
 }
 
@@ -5940,21 +6034,33 @@ $locationAliasCompleter = {
         }
 
         $includeFiles = $commandName -ne 'Set-LocationPlus'
+        $forChezmoiFiles = $commandName -eq 'Edit-ChezmoiFile'
         $pattern = [WildcardPattern]::new($first, [WildcardOptions]::CultureInvariant -bor 'IgnoreCase')
         [CompletionResult[]]@(
-            if ($pattern.IsMatch('other')) {
+            if (-not $forChezmoiFiles -and $pattern.IsMatch('other')) {
                 # yield
                 [CompletionResult]::new('other', 'other', [CompletionResultType]::ParameterValue, 'other')
             }
 
-            $locationAliases = $script:LocationAliases
+            $locationAliases = Get-LocationAlias
             foreach ($kvp in $locationAliases.GetEnumerator()) {
                 if (-not $pattern.IsMatch($kvp.Key)) {
                     continue
                 }
 
+                if ($forChezmoiFiles -and -not $kvp.Value.StartsWith([char]'~')) {
+                    continue
+                }
+
                 # yield
                 [Helper]::GetCompletions($ExecutionContext.SessionState, $kvp.Key, $kvp.Value, $rest, $includeFiles)
+            }
+
+            $targetPath = $projectsPath
+            if ($forChezmoiFiles) {
+                $targetPath = [Environment]::GetFolderPath(
+                    [Environment+SpecialFolder]::UserProfile,
+                    [Environment+SpecialFolderOption]::DoNotVerify)
             }
 
             Get-ChildItem $projectsPath -Filter $first -Directory -ErrorAction Ignore | & { process {
@@ -6175,13 +6281,13 @@ function Get-CommandParameter {
     [Alias('gcp')]
     [CmdletBinding(PositionalBinding = $false)]
     param(
-        [Parameter(ValueFromPipeline)]
+        [Parameter(ValueFromPipeline, Position = 0)]
         [ValidateNotNull()]
         [Alias('c')]
         [CommandInfoArgumentConverter()]
         [CommandInfo] $Command,
 
-        [Parameter(Position = 0)]
+        [Parameter()]
         [ValidateNotNullOrEmpty()]
         [Alias('Parameter')]
         [SupportsWildcards()]
@@ -6347,6 +6453,7 @@ Register-ArgumentCompleter -CommandName Get-CommandParameter -ParameterName Name
 Register-ArgumentCompleter -CommandName Set-LocationPlus -ParameterName Name -ScriptBlock $locationAliasCompleter
 Register-ArgumentCompleter -CommandName Resolve-PathAlias -ParameterName Name -ScriptBlock $locationAliasCompleter
 Register-ArgumentCompleter -CommandName Edit-FilePlus -ParameterName Name -ScriptBlock $locationAliasCompleter
+Register-ArgumentCompleter -CommandName Edit-ChezmoiFile -ParameterName Path -ScriptBlock $locationAliasCompleter
 
 function Get-StackTrace {
     param(
