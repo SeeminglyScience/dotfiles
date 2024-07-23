@@ -270,6 +270,47 @@ function EnsureCommandStopperInitialized {
     }
 }
 
+function Test-Any {
+    [Alias('any')]
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter(Position = 0)]
+        [scriptblock] $Process,
+
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject
+    )
+    begin {
+        $matcher = $null
+        if ($Process) {
+            $matcher = [ClassExplorer.AccessView].Assembly.
+                GetType('ClassExplorer.FilterScriptPipe')::
+                Create($Process)
+        }
+    }
+    process {
+        if ($null -eq $InputObject) {
+            return
+        }
+
+        if (-not $matcher) {
+            # yield
+            $true
+
+            EnsureCommandStopperInitialized
+            [UtilityProfile.CommandStopper]::Stop($PSCmdlet)
+        }
+
+        if ($matcher.IsMatch($InputObject)) {
+            EnsureCommandStopperInitialized
+            [UtilityProfile.CommandStopper]::Stop($PSCmdlet)
+        }
+    }
+    end {
+        return $false
+    }
+}
+
 function Invoke-VSCode {
     [Alias('vsc')]
     [CmdletBinding()]
@@ -3752,190 +3793,6 @@ function Edit-String {
     }
 }
 
-function Get-EnvironmentVariable {
-    [CmdletBinding(PositionalBinding = $false)]
-    param(
-        [Parameter(Position = 0, ValueFromPipeline)]
-        [SupportsWildcards()]
-        [string] $Name,
-
-        [Parameter()]
-        [EnvironmentVariableTarget] $Scope = [EnvironmentVariableTarget]::Process
-    )
-    begin {
-        $alreadyProcessed = $null
-
-        $caseSensitive = [Environment]::GetEnvironmentVariables($Scope)
-        $variables = [Dictionary[string, ValueTuple[string, string]]]::new(
-            $caseSensitive.Count,
-            [StringComparer]::OrdinalIgnoreCase)
-
-        foreach ($kvp in $caseSensitive.GetEnumerator()) {
-            $variables.Add(
-                $kvp.Key,
-                [ValueTuple]::Create($kvp.Key, $kvp.Value))
-        }
-    }
-    process {
-        if (-not $PSBoundParameters.ContainsKey((nameof{$Name})) -or [string]::IsNullOrEmpty($Name)) {
-            return
-        }
-
-        if ($null -eq $alreadyProcessed) {
-            $alreadyProcessed = [HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-        }
-
-        if (-not [WildcardPattern]::ContainsWildcardCharacters($Name)) {
-            $value = default([ValueTuple[string, string]])
-            if ($variables.TryGetValue($Name, [ref] $value)) {
-                return [PSCustomObject]@{
-                    PSTypeName = 'UtilityProfile.EnvironmentVariable'
-                    Name = $value.Item1
-                    Value = $value.Item2
-                    Scope = $Scope
-                }
-            }
-
-            $exception = [PSArgumentException]::new(
-                "Cannot find environment variable '{0}' because it does not exist." -f $Name,
-                (nameof{$Name}))
-
-            $PSCmdlet.WriteError(
-                [ErrorRecord]::new(
-                    <# exception:     #> $exception,
-                    <# errorId:       #> 'EnvVarNotFound',
-                    <# errorCategory: #> [ErrorCategory]::ObjectNotFound,
-                    <# targetObject:  #> $Name))
-
-            return
-        }
-
-        foreach ($kvp in $variables.GetEnumerator()) {
-            if ($kvp.Key -like $Name -and $alreadyProcessed.Add($kvp.Name)) {
-                return [PSCustomObject]@{
-                    PSTypeName = 'UtilityProfile.EnvironmentVariable'
-                    Name = $kvp.Value.Item1
-                    Value = $kvp.Value.Item2
-                    Scope = $Scope
-                }
-            }
-        }
-    }
-    end {
-        if ($MyInvocation.ExpectingInput -or $PSBoundParameters.ContainsKey((nameof{$Name}))) {
-            return
-        }
-
-        foreach ($kvp in $variables.GetEnumerator()) {
-            return [PSCustomObject]@{
-                PSTypeName = 'UtilityProfile.EnvironmentVariable'
-                Name = $kvp.Value.Item1
-                Value = $kvp.Value.Item2
-                Scope = $Scope
-            }
-        }
-    }
-}
-
-function Set-EnvironmentVariable {
-    [CmdletBinding(PositionalBinding = $false, SupportsShouldProcess)]
-    param(
-        [Parameter(Mandatory, ValueFromPipeline, Position = 0)]
-        [Alias('Name', 'Variable')]
-        [AllowNull()]
-        [SupportsWildcards()]
-        [psobject] $InputObject,
-
-        [Parameter(Mandatory, Position = 1)]
-        [AllowEmptyString()]
-        [AllowNull()]
-        [string] $Value,
-
-        [Parameter()]
-        [EnvironmentVariableTarget] $Scope = [EnvironmentVariableTarget]::Process
-    )
-    begin {
-        $isScopeSet = $PSBoundParameters.ContainsKey((nameof{$Scope}))
-        $shouldProcess = {
-            param([string] $name) end {
-                return $PSCmdlet.ShouldProcess("$name=$Value", 'Set Environment Variable')
-            }
-        }
-    }
-    process {
-        if ($null -eq $InputObject) {
-            return
-        }
-
-        foreach ($obj in $InputObject) {
-            if ($obj.PSTypeNames.Contains('UtilityProfile.EnvironmentVariable')) {
-                if (& $shouldProcess $obj.Name) {
-                    $scopeToUse = $obj.Scope
-                    if ($isScopeSet) {
-                        $scopeToUse = $Scope
-                    }
-
-                    [Environment]::SetEnvironmentVariable(
-                        $obj.Name,
-                        $Value,
-                        $scopeToUse)
-                }
-
-                continue
-            }
-
-            if ($obj -is [string]) {
-                if (& $shouldProcess $obj) {
-                    [Environment]::SetEnvironmentVariable(
-                        $obj,
-                        $Value,
-                        $Scope)
-                }
-
-                continue
-            }
-
-            $name = [string]$obj
-            if (-not (& $shouldProcess $name)) {
-                continue
-            }
-
-            [Environment]::SetEnvironmentVariable(
-                $name,
-                $Value,
-                $obj.Scope)
-        }
-    }
-}
-
-function Get-PathEntry {
-    [OutputType([string])]
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline)]
-        [SupportsWildcards()]
-        [string] $Name,
-
-        [Parameter()]
-        [EnvironmentVariableTarget] $Scope = [EnvironmentVariableTarget]::Process
-    )
-    begin {
-        $entries = [Environment]::GetEnvironmentVariable('PATH', $Scope) -split [Path]::PathSeparator
-        $alreadyProcessed = $null
-    }
-    process {
-        if (-not $PSBoundParameters.ContainsKey((nameof{$Name})) -or [string]::IsNullOrEmpty($Name)) {
-            return
-        }
-
-        if ($null -eq $alreadyProcessed) {
-            $alreadyProcessed = [HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-        }
-
-
-    }
-}
-
 class IsSafeDisposableFactoryVisitor : ICustomAstVisitor2 {
     hidden [bool] $_hasSeenInitialScriptBlockAst;
 
@@ -4662,244 +4519,6 @@ function Find-File {
                 }
             } catch {
                 & $handleError $PSCmdlet $PSItem
-            }
-        }
-    }
-}
-
-function Get-PathEntry {
-    [OutputType('UtilityProfile.PathEntry')]
-    [CmdletBinding(PositionalBinding = $false)]
-    param(
-        [Parameter(Position = 0, ValueFromPipeline)]
-        [ValidateNotNullOrEmpty()]
-        [SupportsWildcards()]
-        [string] $Pattern,
-
-        [Parameter()]
-        [ValidateNotNull()]
-        [EnvironmentVariableTarget[]] $Scope
-    )
-    begin {
-        if (-not $PSBoundParameters.ContainsKey((nameof{$Scope}))) {
-            $Scope = [EnvironmentVariableTarget].GetEnumValues()
-        }
-
-        $pathEntries = foreach ($targetScope in $Scope) {
-            $path = [Environment]::GetEnvironmentVariable('PATH', $targetScope)
-            foreach ($entry in $path.Split([char][IO.Path]::PathSeparator, [StringSplitOptions]::RemoveEmptyEntries)) {
-                [PSCustomObject]@{
-                    PSTypeName = 'UtilityProfile.PathEntry'
-                    Scope = $targetScope
-                    Value = $entry
-                }
-            }
-        }
-
-        if (-not ($MyInvocation.ExpectingInput -or $PSBoundParameters.ContainsKey((nameof{$Pattern})))) {
-            if (-not $PSBoundParameters.ContainsKey((nameof{$Pattern}))) {
-                return $pathEntries
-            }
-
-            return $pathEntries.Where{
-                $value = $PSItem.Value
-                $Pattern.Where{ $value -like $PSItem }
-            }
-        }
-
-        $patterns = [HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
-    }
-    process {
-        if (-not ($MyInvocation.ExpectingInput -or $PSBoundParameters.ContainsKey((nameof{$Pattern})))) {
-            return
-        }
-
-        if ($PSBoundParameters.ContainsKey((nameof{$Pattern}))) {
-            $null = $patterns.Add($Pattern)
-        }
-    }
-    end {
-        if (-not ($MyInvocation.ExpectingInput -or $PSBoundParameters.ContainsKey((nameof{$Pattern})))) {
-            return
-        }
-
-        if ($patterns.Count -eq 0) {
-            return $pathEntries
-        }
-
-        return $pathEntries.Where{
-            $value = $PSItem.Value
-            $Pattern.Where{ $value -like $PSItem }
-        }
-    }
-}
-
-function Remove-PathEntry {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory, ValueFromPipeline)]
-        [PSTypeName('UtilityProfile.PathEntry')]
-        [ValidateNotNull()]
-        [psobject] $PathEntry
-    )
-    process {
-        $path = [Environment]::GetEnvironmentVariable(
-            'PATH',
-            $PathEntry.Scope)
-
-        $entries = $path.
-            Split([char][IO.Path]::PathSeparator, [StringSplitOptions]::RemoveEmptyEntries).
-            Where{ -not $PSItem.Equals($PathEntry.Value, [StringComparison]::Ordinal) }
-
-        $newPath = $entries -join [IO.Path]::PathSeparator
-        try {
-            [Environment]::SetEnvironmentVariable(
-                'PATH',
-                $newPath,
-                $PathEntry.Scope)
-        } catch [MethodInvocationException] {
-            $exception = $PSItem.Exception.InnerException
-            $PSCmdlet.WriteError(
-                [ErrorRecord]::new(
-                    $exception,
-                    'CannotSetPathAtScope',
-                    [ErrorCategory]::WriteError,
-                    $PathEntry))
-        }
-    }
-}
-
-function New-PathEntry {
-    [OutputType('UtilityProfile.PathEntry')]
-    [CmdletBinding(DefaultParameterSetName = 'ByPath', PositionalBinding = $false)]
-    param(
-        [Parameter(ValueFromPipeline, ValueFromPipelineByPropertyName, Mandatory, Position = 0, ParameterSetName = 'ByPath')]
-        [SupportsWildcards()]
-        [ValidateNotNullOrEmpty()]
-        [Alias('FullName')]
-        [string[]] $Path,
-
-        [Parameter(Mandatory, ParameterSetName = 'ByLiteralPath')]
-        [ValidateNotNullOrEmpty()]
-        [string] $LiteralPath,
-
-        [Parameter(Position = 1, ParameterSetName = 'ByPath')]
-        [Parameter(Position = 0, ParameterSetName = 'ByLiteralPath')]
-        [EnvironmentVariableTarget] $Scope = [EnvironmentVariableTarget]::Process
-    )
-    begin {
-        $comparer = if ($IsLinux) {
-            [StringComparer]::Ordinal
-        } else {
-            [StringComparer]::OrdinalIgnoreCase
-        }
-
-        $pathsToSet = [HashSet[string]]::new($comparer)
-        $pathsToSetOrdered = [List[string]]::new()
-        $existingEntries = [HashSet[string]]::new($comparer)
-        foreach ($entry in Get-PathEntry -Scope $Scope) {
-            $null = $existingEntries.Add($entry.Value)
-        }
-    }
-    process {
-        if ($PSBoundParameters.ContainsKey((nameof{$LiteralPath}))) {
-            $fullPath = $PSCmdlet.GetUnresolvedProviderPathFromPSPath($LiteralPath)
-            if ($existingEntries.Contains($fullPath)) {
-                return
-            }
-
-            if ($pathsToSet.Add($fullPath)) {
-                $pathsToSetOrdered.Add($fullPath)
-            }
-
-            return
-        }
-
-        foreach ($singlePath in $Path) {
-            $resolvedPaths = $null
-            try {
-                $provider = $null
-                $resolvedPaths = $PSCmdlet.GetResolvedProviderPathFromPSPath(
-                    $singlePath,
-                    [ref] $provider)
-
-                if ($provider.Name -ne [FileSystemProvider]::ProviderName) {
-                    $PSCmdlet.WriteError(
-                        [ErrorRecord]::new(
-                            [PSArgumentException]::new('Path must be of the FileSystem provider.'),
-                            'PathNotFileSystem',
-                            [ErrorCategory]::InvalidArgument,
-                            $singlePath))
-                    continue
-                }
-            } catch [MethodInvocationException] {
-                $PSCmdlet.WriteError(
-                    [ErrorRecord]::new(
-                        $PSItem.Exception.InnerException,
-                        'CannotResolvePath',
-                        [ErrorCategory]::ObjectNotFound,
-                        $singlePath))
-                continue
-            }
-
-            $didFindDirectory = $false
-            foreach ($resolvedPath in $resolvedPaths) {
-                if (-not [IO.Directory]::Exists($resolvedPath)) {
-                    continue
-                }
-
-                $didFindDirectory = $true
-                if ($existingEntries.Contains($resolvedPath)) {
-                    continue
-                }
-
-                if ($pathsToSet.Add($resolvedPath)) {
-                    $pathsToSetOrdered.Add($resolvedPaths)
-                }
-            }
-
-            if ($didFindDirectory) {
-                continue
-            }
-
-            $exception = [ItemNotFoundException]::new(
-                'Unable to find a directory with the path "{0}"' -f $singlePath)
-
-            $PSCmdlet.WriteError(
-                [ErrorRecord]::new(
-                    $exception,
-                    'CannotResolvePath',
-                    [ErrorCategory]::ObjectNotFound,
-                    $singlePath))
-        }
-    }
-    end {
-        $rawEntries = Get-PathEntry -Scope $Scope |
-            Select-Object -ExpandProperty Value |
-            append { $pathsToSetOrdered }
-
-        $newPath = $rawEntries -join [IO.Path]::PathSeparator
-        try {
-            [Environment]::SetEnvironmentVariable(
-                'PATH',
-                $newPath,
-                $Scope)
-        } catch [MethodInvocationException] {
-            $exception = $PSItem.Exception.InnerException
-            $PSCmdlet.WriteError(
-                [ErrorRecord]::new(
-                    $exception,
-                    'CannotSetPathAtScope',
-                    [ErrorCategory]::WriteError,
-                    $PathEntry))
-            return
-        }
-
-        $pathsToSetOrdered.ForEach{
-            [PSCustomObject]@{
-                PSTypeName = 'UtilityProfile.PathEntry'
-                Scope = $Scope
-                Value = $PSItem
             }
         }
     }
@@ -6660,6 +6279,7 @@ function Update-DotNet {
 if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
     . "$PSScriptRoot\PreviewCommands.ps1"
     . "$PSScriptRoot\InstallPwshCommands.ps1"
+    . "$PSScriptRoot\EnvironmentVariables.ps1"
 }
 
 . "$PSScriptRoot\intrinsics.ps1"

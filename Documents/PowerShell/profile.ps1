@@ -41,6 +41,7 @@ $alias:dis       = 'Get-ScriptBlockDisassembly'
 $alias:fet       = 'Format-ExpressionTree'
 $alias:lib       = 'New-CtypesLib'
 $alias:struct    = 'New-CtypesStruct'
+$alias:fires     = 'Find-PSResource'
 
 # Aliases from Utility.psm1
 # number       = ConvertTo-Number

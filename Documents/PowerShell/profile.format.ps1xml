@@ -910,5 +910,111 @@
                 </TableRowEntries>
             </TableControl>
         </View>
+        <View>
+            <Name>UtilityProfile.PathEntry</Name>
+            <ViewSelectedBy>
+                <TypeName>UtilityProfile.PathEntry</TypeName>
+            </ViewSelectedBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Label>#</Label>
+                        <Width>2</Width>
+                        <Alignment>Right</Alignment>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Scope</Label>
+                        <Width>7</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Unexpanded</Label>
+                    </TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    [ClassExplorer.Internal._Format]::Number($_.Index)
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    [ClassExplorer.Internal._Format]::MemberName($_.Scope)
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    $_.Unexpanded -replace '%[^%]+%', "$((Get-PSReadLineOption).VariableColor)`$0$($PSStyle.Reset)"
+                                </ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>UtilityProfile.EnvironmentVariable</Name>
+            <ViewSelectedBy>
+                <TypeName>UtilityProfile.EnvironmentVariable</TypeName>
+            </ViewSelectedBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Width>20</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>40</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>User</Label>
+                        <Width>40</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Machine</Label>
+                        <Width>40</Width>
+                    </TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <Wrap>true</Wrap>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <PropertyName>Name</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Value</PropertyName>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if (-not $_.User.IsPresent()) {
+                                        return [ClassExplorer.Internal._Format]::FancyBool($false)
+                                    }
+
+                                    if ($_.User -eq $_.Value) {
+                                        return [ClassExplorer.Internal._Format]::FancyBool($true)
+                                    }
+
+                                    $_.User.ToString() -replace '%[^%]+%', "$((Get-PSReadLineOption).VariableColor)`$0$($PSStyle.Reset)"
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if (-not $_.Machine.IsPresent()) {
+                                        return [ClassExplorer.Internal._Format]::FancyBool($false)
+                                    }
+
+                                    if ($_.Machine -eq $_.Value) {
+                                        return [ClassExplorer.Internal._Format]::FancyBool($true)
+                                    }
+
+                                    $_.Machine.ToString() -replace '%[^%]+%', "$((Get-PSReadLineOption).VariableColor)`$0$($PSStyle.Reset)"
+                                </ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
     </ViewDefinitions>
 </Configuration>

@@ -9,11 +9,15 @@ $psps = @{
     RepositoryName = 'PowerShell'
 }
 
+$apiBase = 'repos/PowerShell/PowerShell'
+
 if (-not $env:PWSH_STORE) {
     $env:PWSH_STORE = 'C:\pwsh'
 }
 
 $removeAssetTypePattern = '-(x86|fxdependent(WinDesktop)?)$'
+
+$cachedGithubReleases = $null
 
 $shGetKnownFolderPathJob = InitAsync {
     Add-Type -CompilerOptions '-unsafe' -TypeDefinition '
@@ -258,7 +262,7 @@ function Get-Pwsh {
                     }
                 }
             } else {
-                return GetAllVersions | Where-Object Tag -Like $Tag
+                return GetAllVersions | Where-Object Tag -Like $Tag | SortPwshVersion
             }
         }
 
@@ -271,7 +275,7 @@ function Get-Pwsh {
                 return GetAllVersions | Where-Object -Not PreReleaseTag | SortPwshVersion | Select-Object -First 1
             }
 
-            return GetAllVersions
+            return GetAllVersions | SortPwshVersion
         }
 
         if (-not ($Preview -or $Rc -or $Build)) {
@@ -330,7 +334,12 @@ function SortPwshVersion {
 
                     $isRc = $_.PreReleaseTag.StartsWith('rc.')
                     $isPreview = $_.PreReleaseTag.StartsWith('preview.')
-                    $number = [int]($_.PreReleaseTag -replace '^rc\.|^preview\.')
+                    $lastTagElement = ($_.PreReleaseTag -split '\.')[-1]
+                    $number = 1
+                    if (-not [int]::TryParse($lastTagElement, [ref] $number)) {
+                        $number = 1
+                    }
+
                     if ($isRc) {
                         $number += 1000
                     }
@@ -399,33 +408,209 @@ function Find-Pwsh {
         [Parameter(ParameterSetName = 'Partial')]
         [switch] $LatestStable
     )
-    end {
-        if ($PSCmdlet.ParameterSetName -eq 'Partial') {
-            if (-not $MajorAndMinor) {
-                if ($LatestStable) {
-                    return Get-GitHubRelease @psps -Latest | NewPwshVersionInfo
-                }
-
-                if ($Latest) {
-                    return Find-Pwsh |
-                        Select-Object -First 10 |
-                        SortPwshVersion |
-                        Select-Object -First 1
-                }
-
-                return Get-GitHubRelease @psps | NewPwshVersionInfo
+    begin {
+        function GetRelease {
+            param([string] $Tag)
+            $result = gh api "$apiBase/releases/tags/$Tag" 2> $null | ConvertFrom-Json
+            if ($result.status -eq 404) {
+                return
             }
 
-            if (-not ($Build -or $Preview -or $Rc)) {
-                $Tag = "v$MajorAndMinor*"
-            } else {
-                $Tag = GetTag -MajorAndMinor $MajorAndMinor -Build $Build -Preview $Preview -Rc $Rc
+            return $result
+        }
+
+        function GetLatestRelease {
+            param([string] $TagTemplate, [int] $Start)
+            end {
+                $mostCurrent = $null
+                for ($i = $Start; $true; $i++) {
+                    if ($i -eq 20 -and $TagTemplate -eq 'v7.2.{0}') {
+                        # 7.2.20 was skipped in GH releases as it was dotnet global
+                        # tool only.
+                        $i++
+                    }
+
+                    $result = GetRelease ($TagTemplate -f $i)
+                    if ($result) {
+                        $mostCurrent = $result
+                        continue
+                    }
+
+                    return $mostCurrent
+                }
             }
         }
 
+        function GetAllReleasesNoCache {
+            end {
+                $page = 1
+                while ($true) {
+                    $results = gh api "$apiBase/releases?per_page=10&page=$page" 2> $null | ConvertFrom-Json
+                    if (-not $results) {
+                        return
+                    }
+
+                    # yield
+                    $results | NewPwshVersionInfo
+                    $page++
+                }
+            }
+        }
+
+        function GetAllReleases {
+            end {
+                if (-not $cachedGithubReleases) {
+                    return $script:cachedGithubReleases = GetAllReleasesNoCache
+                }
+
+                $page = 1
+                while ($true) {
+                    $current = gh api "$apiBase/releases?per_page=1&page=$page" 2> $null |
+                        ConvertFrom-Json |
+                        NewPwshVersionInfo
+
+                    if ($current.Tag -ne $cachedGithubReleases[0].Tag) {
+                        # yield
+                        $current
+                        $page++
+                        continue
+                    }
+
+                    break
+                }
+
+                $cachedGithubReleases
+            }
+        }
+    }
+    end {
+        $stop = @{ ErrorAction = [ActionPreference]::Stop }
+        if ($PSCmdlet.ParameterSetName -eq 'Partial') {
+            if (-not $MajorAndMinor) {
+                if ($LatestStable) {
+                    return gh api $apiBase/releases/latest 2> $null | ConvertFrom-Json | NewPwshVersionInfo
+                }
+
+                if ($Latest) {
+                    $previewInfo = Invoke-RestMethod https://aka.ms/pwsh-buildinfo-preview @stop
+                    $stableInfo = Invoke-RestMethod https://aka.ms/pwsh-buildinfo-stable @stop
+                    try {
+                        $previewVersion = [version]($previewInfo.ReleaseTag -replace '^v' -replace '-.+$')
+                        $stableVersion = [version]($stableInfo.ReleaseTag -replace '^v')
+                    } catch {
+                        $PSCmdlet.WriteError($PSItem)
+                        return
+                    }
+
+                    if ($previewVersion -gt $stableVersion) {
+                        return GetRelease $previewInfo.ReleaseTag | NewPwshVersionInfo
+                    }
+
+                    return GetRelease $stableVersion.ReleaseTag | NewPwshVersionInfo
+                }
+
+                return GetAllReleases | SortPwshVersion
+            } elseif (-not ($Build -or $Preview -or $Rc)) {
+                if ($cachedGithubReleases) {
+                    if ($Latest) {
+                        return Find-Pwsh | Where-Object Version -like "$MajorAndMinor.*" | Select-Object -First 1
+                    }
+
+                    return Find-Pwsh | Where-Object Version -like "$MajorAndMinor.*"
+                }
+
+                if ($Latest) {
+                    $prefix = $MajorAndMinor
+                    $base = gh api "$apiBase/releases/tags/v$prefix.0" 2> $null | ConvertFrom-Json
+                    $base = GetRelease "v$prefix.0"
+                    if (-not $base) {
+                        $rc = GetRelease "v$prefix.0-rc.1"
+                        if (-not $rc) {
+                            $preview = GetRelease "v$prefix.0-preview.1"
+                            if (-not $preview) {
+                                $PSCmdlet.WriteError(
+                                    [ErrorRecord]::new(
+                                        <# exception: #> [ItemNotFoundException]::new("No release found for $prefix."),
+                                        <# errorId: #> 'ReleaseNotFound',
+                                        <# errorCategory: #> [ErrorCategory]::ObjectNotFound,
+                                        <# targetObject: #> $MajorAndMinor))
+                                return
+                            }
+
+                            $result = GetLatestRelease "v$prefix.0-preview.{0}" 2
+                            return $result ?? $preview | NewPwshVersionInfo
+                        }
+
+                        $result = GetLatestRelease "v$prefix.0-rc.{0}" 2
+                        return $result ?? $rc | NewPwshVersionInfo
+                    }
+
+                    $result = GetLatestRelease "v$prefix.{0}" 1
+                    return $result ?? $base | NewPwshVersionInfo
+                }
+
+                return & {
+                    $apiBase = $apiBase
+                    $prefix = $MajorAndMinor
+
+                    $base = gh api "$apiBase/releases/tags/v$prefix.0" 2> $null | ConvertFrom-Json
+                    $base = GetRelease "v$prefix.0"
+                    if ($base) {
+                        $base
+                    }
+
+                    for ($i = 1; $true; $i++) {
+                        $release = GetRelease "v$prefix.0-preview.$i"
+                        if (-not $release) {
+                            break
+                        }
+
+                        $release
+                    }
+
+                    for ($i = 1; $true; $i++) {
+                        $release = GetRelease "v$prefix.0-rc.$i"
+                        if (-not $release) {
+                            break
+                        }
+
+                        $release
+                    }
+
+                    if (-not $base) {
+                        return
+                    }
+
+                    for ($i = 1; $true; $i++) {
+                        # 7.2.20 was skipped in GH releases as it was dotnet global
+                        # tool only.
+                        if ($i -eq 20 -and $prefix -eq '7.2') {
+                            $i++
+                        }
+
+                        $release = GetRelease "v$prefix.$i"
+                        if (-not $release) {
+                            break
+                        }
+
+                        $release
+                    }
+                } | NewPwshVersionInfo | SortPwshVersion
+
+                if ($Latest) {
+                    return $results | Select-Object -First 1
+                }
+
+                return $results
+            }
+
+            $Tag = GetTag -MajorAndMinor $MajorAndMinor -Build $Build -Preview $Preview -Rc $Rc
+        }
+
+
         if ($Tag -and -not [WildcardPattern]::ContainsWildcardCharacters($Tag)) {
             try {
-                return Get-GitHubRelease @psps -Tag $Tag -ErrorAction Stop | NewPwshVersionInfo
+                return GetRelease $Tag | NewPwshVersionInfo
             } catch {
                 $PSCmdlet.WriteError(
                     [ErrorRecord]::new(
@@ -433,25 +618,18 @@ function Find-Pwsh {
                         <# errorId: #> 'CouldNotFindRelease',
                         <# errorCategory: #> [ErrorCategory]::ObjectNotFound,
                         <# targetObject: #> $Tag))
-            }
-        }
 
-        if (-not $Tag) {
-            if ($Latest) {
-                return Get-GitHubRelease @psps | NewPwshVersionInfo | Select-Object -First 1
+                return
             }
-
-            return Get-GitHubRelease @psps | NewPwshVersionInfo
         }
 
         if ($Latest) {
-            return Get-GitHubRelease @psps |
-                Where-Object tag_name -like $Tag |
-                NewPwshVersionInfo |
+            return GetAllReleases |
+                Where-Object Tag -like $Tag |
                 Select-Object -First 1
         }
 
-        return Get-GitHubRelease @psps | Where-Object tag_name -like $Tag | NewPwshVersionInfo
+        return Find-Pwsh | Where-Object Tag -like $Tag
     }
 }
 
@@ -477,6 +655,9 @@ function Enter-Pwsh {
         [ValidateNotNullOrEmpty()]
         [string] $Rc,
 
+        [Parameter(ParameterSetName = 'Dev', Mandatory)]
+        [switch] $Dev,
+
         [Parameter(ParameterSetName = 'Tag', ValueFromPipelineByPropertyName)]
         [ValidateNotNullOrEmpty()]
         [SupportsWildcards()]
@@ -496,6 +677,11 @@ function Enter-Pwsh {
         [string[]] $AdditionalArguments
     )
     end {
+        if ($PSCmdlet.ParameterSetName -eq 'Dev') {
+            & { & "$env:PWSH_STORE\dev\pwsh.exe" @AdditionalArguments } | Out-Default
+            return
+        }
+
         if ($PSCmdlet.ParameterSetName -eq 'Partial') {
             $Tag = GetTag -MajorAndMinor $MajorAndMinor -Build $Build -Preview $Preview -Rc $Rc
         }
@@ -555,20 +741,31 @@ function Install-Pwsh {
         [switch] $Overwrite
     )
     process {
-        if ($PSCmdlet.ParameterSetName -eq 'Partial') {
-            $Tag = GetTag -MajorAndMinor $MajorAndMinor -Build $Build -Preview $Preview -Rc $Rc -ForInstall
-        }
-
+        $foundVersions = $null
         $stop = @{
             ErrorAction = [ActionPreference]::Stop
         }
 
-        $foundVersions = $null
-        try {
-            $foundVersions = Find-Pwsh -Tag $Tag -ErrorAction Stop
-        } catch {
-            $PSCmdlet.WriteError($PSItem)
-            return
+        if ($PSCmdlet.ParameterSetName -eq 'Partial') {
+            if ($MajorAndMinor -and -not ($Tag -or $Preview -or $Rc -or $Build)) {
+                try {
+                    $foundVersions = Find-Pwsh -MajorAndMinor $MajorAndMinor -Latest @stop
+                } catch {
+                    $PSCmdlet.WriteError($PSItem)
+                    return
+                }
+            } else {
+                $Tag = GetTag -MajorAndMinor $MajorAndMinor -Build $Build -Preview $Preview -Rc $Rc -ForInstall
+            }
+        }
+
+        if ($Tag) {
+            try {
+                $foundVersions = Find-Pwsh -Tag $Tag @stop
+            } catch {
+                $PSCmdlet.WriteError($PSItem)
+                return
+            }
         }
 
         if ($UseMsi) {
@@ -583,7 +780,7 @@ function Install-Pwsh {
             $downloadsFolder = [ISPInterop]::GetDownloadsFolder()
             $destinationPath = Join-Path $downloadsFolder -ChildPath $targetAsset
             if (Test-Path -LiteralPath $destinationPath) {
-                if (-not ($Overwrite -or $PSCmdlet.ShouldContinue("Overwrite $destinationPath"))) {
+                if (-not ($Overwrite -or $PSCmdlet.ShouldContinue("Overwrite $destinationPath", 'Continue?'))) {
                     return
                 }
 

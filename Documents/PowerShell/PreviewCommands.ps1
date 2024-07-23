@@ -1601,3 +1601,151 @@ function Get-MarshalledSize {
         return [System.Runtime.InteropServices.Marshal]::SizeOf([type]$Type)
     }
 }
+
+$DotNetStore = $env:DOTNET_STORE ?? 'C:/dotnet'
+
+# Trying to manage a ton of different dotnet installs for a ton of projects with
+# global.json's demanding specific versions can be annoying. This aims to fix that.
+function Install-DotNet {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNull()]
+        [SemanticVersion] $Version
+    )
+    end {
+        $store = $script:DotNetStore
+        $versions = Get-ChildItem -LiteralPath $store -Directory | Where-Object Name -notin current, stable
+        if ($versions.Name -contains $Version.ToString()) {
+            return
+        }
+
+        $targetPath = Join-Path $store $Version
+        $dotnetInstall = Get-Command $store/dotnet-install.ps1 -ErrorAction Ignore
+        if (-not $dotnetInstall) {
+            Invoke-WebRequest https://dot.net/v1/dotnet-install.ps1 -OutFile $store/dotnet-install.ps1 -ErrorAction Stop
+            $dotnetInstall = Get-Command $store/dotnet-install.ps1 -ErrorAction Stop
+        }
+
+        & $dotnetInstall -Version $Version -InstallDir $targetPath
+
+        if (-not ($versions.Name | Where-Object { ([SemanticVersion]$_) -gt $Version })) {
+            $null = New-Item -ItemType SymbolicLink -Path $store/current -Value $targetPath -ErrorAction Stop
+        }
+
+        if ($Version.PreReleaseLabel) {
+            return
+        }
+
+        $stableVersions = $versions.ForEach([SemanticVersion]).
+            Where{ -not $_.PreReleaseLabel }
+
+        if (-not ($stableVersions | Where-Object { $_ -gt $Version })) {
+            $null = New-Item -ItemType SymbolicLink -Path $store/stable -Value $targetPath -ErrorAction Stop
+        }
+    }
+}
+
+# Mainly to make it easy to check if an SDK release is live, or to simply get the
+# latest version. Typically for when I'm on release duty.
+function Get-LatestDotNet {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Channel
+    )
+    end {
+        function _normalize {
+            param([string] $value)
+            end {
+                if ($value -eq 'lts') {
+                    return 'LTS'
+                }
+
+                if ($value -eq 'sts') {
+                    return 'STS'
+                }
+
+                return "$([int]$value).0"
+            }
+        }
+
+        Invoke-RestMethod "https://dotnetcli.azureedge.net/dotnet/Sdk/$(_normalize $Channel)/latest.version"
+    }
+}
+
+# Try to determine what project I'm trying to build and just do it for me. At some point
+# I need to make the `AdditionalArguments` add the note property to make splatting it
+# work for PowerShell commands.
+function Invoke-ProjectBuild {
+    [Alias('b')]
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter()]
+        [Alias('c')]
+        [string] $Configuration,
+
+        [Parameter()]
+        [Alias('a')]
+        [switch] $All,
+
+        [Parameter(ValueFromRemainingArguments)]
+        [string[]] $AdditionalArguments
+    )
+    end {
+        $location = $PSCmdlet.SessionState.Path.CurrentFileSystemLocation.ProviderPath
+        if (Test-Path -LiteralPath (Join-Path $location global.json)) {
+            $json = Get-Content -Raw -LiteralPath (Join-Path $location global.json) | ConvertFrom-Json
+            if ($json.sdk.version) {
+                if ((dotnet --version) -ne $json.sdk.version) {
+                    Install-DotNet $json.sdk.version
+                    New-PathEntry -Path (Join-Path $script:DotNetStore $json.sdk.version) -Prefix
+                }
+            }
+        }
+
+        if (Test-Path -LiteralPath (Join-Path $location PowerShell.sln)) {
+            if (-not (Get-Module build)) {
+                Import-Module (Join-Path $location build.psm1) -Global
+            }
+
+            $splat = @{
+                ReleaseTag = "v$($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor).0-preview.99"
+                Output = Join-Path ($env:PWSH_STORE ?? 'C:\pwsh') dev
+            }
+
+            $splat['Configuration'] = $Configuration ? $Configuration : 'Debug'
+
+            if ($All) {
+                Start-PSBuild @splat -Restore -PSModuleRestore -ResGen -TypeGen
+                return
+            }
+
+            Start-PSBuild @splat
+            return
+        }
+
+        if (Test-Path -LiteralPath (Join-Path $location build.ps1)) {
+            $build = Get-Command (Join-Path $location build.ps1)
+            if ($Configuration -and $build.Parameters['Configuration']) {
+                & $build -Configuration $Configuration
+                return
+            }
+
+            & $build
+            return
+        }
+
+        $PSNativeCommandArgumentPassing = 'Legacy'
+        if ($Configuration) {
+            $argList = @(
+                $AdditionalArguments
+                '--configuration', $Configuration)
+        } else {
+            $argList = $AdditionalArguments
+        }
+
+        dotnet publish @argList
+    }
+}
