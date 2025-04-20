@@ -1,6 +1,9 @@
 ﻿using namespace System.Collections.Generic
 using namespace System.Diagnostics
 using namespace System.Management.Automation
+using namespace System.Management.Automation.Language
+using namespace System.Reflection
+using namespace PowerShellRun
 
 function Get-AssemblyLoadContext {
     [Alias('galc')]
@@ -148,6 +151,10 @@ function Invoke-Fzf {
                     }
                 } else {
                     $line = $this._pipe.Process([psobject]$pso)
+                }
+
+                if ($global:IsWindows) {
+                    $line = $line -replace ('Am' + 'si'), 'Anty'
                 }
 
                 return ([string]$line) + "`u{00a0}"
@@ -434,6 +441,9 @@ function Invoke-Fzf {
         $onExited = {
             while (-not $process.StandardOutput.EndOfStream) {
                 $line = $process.StandardOutput.ReadLine()
+                if ($IsWindows) {
+                    $line = $line -replace ('Am' + 'si'), 'Anty'
+                }
                 if ($inputWriter) {
                     $Context.WriteObject($inputWriter.GetOutputObject($line), $false)
                     $process.StandardInput.Close()
@@ -454,6 +464,10 @@ function Invoke-Fzf {
         }
 
         try {
+            if ($InputObject -is [string]) {
+                $InputObject = $InputObject -replace ('Am' + 'si'), 'Anty'
+            }
+
             $inputWriter.WriteObject($InputObject)
         } catch [System.IO.IOException] {
             & $onExited
@@ -785,6 +799,7 @@ function Show-GitCommitTui {
             Prompt = (New-PromptBox 'commit')
         }
 
+        $PSNativeCommandArgumentPassing = 'Legacy'
         git -c color.ui=always log --oneline --decorate --abbrev-commit --graph @GitArgs
             | Invoke-Fzf @invokeFzfSplat
             | & { process {
@@ -841,6 +856,7 @@ function Show-GitAddRestoreTui {
         [string[]] $GitArgs
     )
     end {
+        $PSNativeCommandArgumentPassing = 'Legacy'
         Show-GitStatusTui -Prompt (New-PromptBox 'stage/unstage') @GitArgs
             | & { process {
                 if ($_.Staged) {
@@ -1222,7 +1238,8 @@ function Find-Issue {
         $argList += $ArgumentList
 
         # gh search issues @argList
-        gh search issues @argList | ConvertFrom-Json | & { process {
+        # Write-Host @argList
+        gh search issues @argList | Out-String | ConvertFrom-Json | & { process {
             $PSItem.updatedAt = $PSItem.updatedAt.ToLocalTime()
             $PSItem.createdAt = $PSItem.createdAt.ToLocalTime()
             $PSItem.closedAt = $PSItem.closedAt.ToLocalTime()
@@ -1322,14 +1339,16 @@ function New-Allocation {
     end {
         $cb = $Length
         if ($Type) {
-            $cb = $cb * [System.Runtime.InteropServices.Marshal]::SizeOf([type]$Type)
+            return [ptr]::Alloc($Type, $cb)
         }
 
         if ($CoTaskMem) {
-            return [System.Runtime.InteropServices.Marshal]::AllocCoTaskMem($cb)
+            if ($Type) { throw 'sorry, lazy' }
+
+            return [ptr][System.Runtime.InteropServices.Marshal]::AllocCoTaskMem($cb)
         }
 
-        return [System.Runtime.InteropServices.Marshal]::AllocHGlobal($cb)
+        return [ptr]::Alloc($cb)
     }
 }
 
@@ -1460,30 +1479,30 @@ function New-MarshalledString {
     )
     end {
         if ($MarshalType -eq [StringMarshalType]::BStr) {
-            return [System.Runtime.InteropServices.Marshal]::StringToBSTR($Value)
+            return [ptr[char]][System.Runtime.InteropServices.Marshal]::StringToBSTR($Value)
         }
 
         if ($CoTaskMem) {
             if ($MarshalType -eq [StringMarshalType]::Ansi) {
-                return [System.Runtime.InteropServices.Marshal]::StringToCoTaskMemAnsi($Value)
+                return [ptr[byte]][System.Runtime.InteropServices.Marshal]::StringToCoTaskMemAnsi($Value)
             }
 
             if ($MarshalType -eq [StringMarshalType]::Utf8) {
-                return [System.Runtime.InteropServices.Marshal]::StringToCoTaskMemUTF8($Value)
+                return [ptr[byte]][System.Runtime.InteropServices.Marshal]::StringToCoTaskMemUTF8($Value)
             }
 
-            return [System.Runtime.InteropServices.Marshal]::StringToCoTaskMemUni($Value)
+            return [ptr[char]][System.Runtime.InteropServices.Marshal]::StringToCoTaskMemUni($Value)
         }
 
         if ($MarshalType -eq [StringMarshalType]::Ansi) {
-            return [System.Runtime.InteropServices.Marshal]::StringToHGlobalAnsi($Value)
+            return [ptr[byte]][System.Runtime.InteropServices.Marshal]::StringToHGlobalAnsi($Value)
         }
 
         if ($MarshalType -eq [StringMarshalType]::Utf8) {
-            return [System.Runtime.InteropServices.Marshal]::StringToHGlobalUTF8($Value)
+            return [ptr[byte]][System.Runtime.InteropServices.Marshal]::StringToHGlobalUTF8($Value)
         }
 
-        return [System.Runtime.InteropServices.Marshal]::StringToHGlobalUni($Value)
+        return [ptr[char]][System.Runtime.InteropServices.Marshal]::StringToHGlobalUni($Value)
     }
 }
 
@@ -1630,6 +1649,10 @@ function Install-DotNet {
         & $dotnetInstall -Version $Version -InstallDir $targetPath
 
         if (-not ($versions.Name | Where-Object { ([SemanticVersion]$_) -gt $Version })) {
+            if (Test-Path -LiteralPath $store/current) {
+                Remove-Item -LiteralPath $store/current
+            }
+
             $null = New-Item -ItemType SymbolicLink -Path $store/current -Value $targetPath -ErrorAction Stop
         }
 
@@ -1637,10 +1660,14 @@ function Install-DotNet {
             return
         }
 
-        $stableVersions = $versions.ForEach([SemanticVersion]).
+        $stableVersions = $versions.Name.ForEach([SemanticVersion]).
             Where{ -not $_.PreReleaseLabel }
 
         if (-not ($stableVersions | Where-Object { $_ -gt $Version })) {
+            if (Test-Path -LiteralPath $store/stable) {
+                Remove-Item -LiteralPath $store/stable
+            }
+
             $null = New-Item -ItemType SymbolicLink -Path $store/stable -Value $targetPath -ErrorAction Stop
         }
     }
@@ -1700,7 +1727,7 @@ function Invoke-ProjectBuild {
             if ($json.sdk.version) {
                 if ((dotnet --version) -ne $json.sdk.version) {
                     Install-DotNet $json.sdk.version
-                    New-PathEntry -Path (Join-Path $script:DotNetStore $json.sdk.version) -Prefix
+                    Add-PathEntry -Path (Join-Path $script:DotNetStore $json.sdk.version) -Prefix
                 }
             }
         }
@@ -1747,5 +1774,1155 @@ function Invoke-ProjectBuild {
         }
 
         dotnet publish @argList
+    }
+}
+
+$IsSlashInited = $false
+function Invoke-CustomPSRun {
+    [CmdletBinding(PositionalBinding = $false)]
+    param(
+        [Parameter()]
+        [hashtable] $PSRunParams = @{},
+
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject
+    )
+    clean { $pipe -is [SteppablePipeline] ? $pipe.Clean() : $() }
+    begin {
+        class PropertyNameOrIndex {
+            [object] $Value
+
+            [bool] $IsIndex
+
+            PropertyNameOrIndex([string] $value) {
+                $this.Value = $value
+                $this.IsIndex = $false
+            }
+
+            PropertyNameOrIndex([int] $value) {
+                $this.Value = $value
+                $this.IsIndex = $true
+            }
+
+            [object] Apply([psobject] $source) {
+                if ($this.IsIndex) {
+                    return $source[$this.Value]
+                }
+
+                return $source.($this.Value)
+            }
+        }
+
+        class ObjectPath {
+            hidden static [char[]] $s_toFind = '.', '['
+
+            [PropertyNameOrIndex[]] $Entries
+
+            ObjectPath([string] $path) {
+                $next = $path.IndexOfAny($this::s_toFind, 0)
+                $this.Entries = while ($next -ne -1) {
+                    if ($path[$next] -eq '.') {
+                        if ($next -eq ($path.Length - 1)) {
+                            throw [InvalidOperationException]::new('Last character cannot be "."')
+                        }
+
+                        $propStart = $next + 1
+                        $next = $path.IndexOfAny($this::s_toFind, $propStart)
+                        if ($next -eq -1) {
+                            [PropertyNameOrIndex]$path.Substring($propStart)
+                            break
+                        }
+
+                        $length = $next - $propStart
+                        if (-not $length) {
+                            throw [InvalidOperationException]::new(
+                                ('Property name starting at offset {0} is empty.' -f $next))
+                        }
+
+                        [PropertyNameOrIndex]$path.Substring($propStart, $length)
+                        continue
+                    }
+
+                    $indexStart = $next + 1
+                    if ($indexStart -eq $path.Length) {
+                        throw [InvalidOperationException]::new('Last character cannot be "["')
+                    }
+
+
+                    $indexEnd = $path.IndexOf(']'[0], $indexStart)
+                    if ($indexEnd -eq -1) {
+                        throw [InvalidOperationException]::new(
+                            ('Index expression starting at index {0} is missing the terminating "]" character' -f $indexStart))
+                    }
+
+                    if ($indexEnd -eq $indexStart) {
+                        throw [InvalidOperationException]::new(
+                            ('Index value starting at offset {0} is empty.' -f $indexStart))
+                    }
+
+                    $indexValue = $path.Substring($indexStart, $indexEnd - $indexStart)
+                    $indexValue -match '\d+' ? [PropertyNameOrIndex]::new([int]$indexValue) : [PropertyNameOrIndex]$indexValue
+
+                    $next = $indexEnd + 1
+                    if ($next -eq $path.Length) {
+                        break
+                    }
+
+                    $nextChar = $path[$next]
+                    if ($nextChar -notin $this::s_toFind) {
+                        throw [InvalidOperationException]::new(
+                            ('Expected "." or "[" at offset {0}.' -f $next))
+                    }
+
+                    continue
+                }
+            }
+
+            [object] Apply([psobject] $source) {
+                $obj = $source
+                foreach ($entry in $this.Entries) {
+                    $obj = $entry.Apply($obj)
+                }
+
+                return $obj
+            }
+        }
+
+        class Transform {
+            [string] $PropertyName
+
+            [scriptblock] $Script
+
+
+        }
+
+        function ProcessArg {
+            param([object] $arg) end {
+                if ($null -eq $arg) {
+                    return $null
+                }
+
+                if ($arg -is [hashtable]) {
+                    return $arg
+                }
+
+                if ($arg -is [scriptblock]) {
+                    return @{ Expression = $arg }
+                }
+
+                return @{ PropertyName = [string]$arg }
+            }
+        }
+
+        function ProcessInput {
+            param([ref] $arg, [object] $pipelineObject) end {
+                if ($null -eq $arg.Value) {
+                    return $null
+                }
+
+                if ($null -ne $arg.Value -and $arg.Value -isnot [hashtable]) {
+                    $arg.Value = ProcessArg $arg.Value
+                }
+            }
+        }
+
+        [PowerShellRun.SelectorOption] $options = Get-PSRunDefaultSelectorOption
+        $slashKey = default([PowerShellRun.Key])
+        $slashKey.value__ = 0x1000
+
+        if (-not $script:IsSlashInited) {
+            $field = Find-Type -Force -FullName PowerShellRun.KeyInput
+                | Find-Member -Static -Force _keyConsoleKeyTable
+
+            $value = $field.GetValue($null)
+            [Array]::Resize(
+                [ref] $value,
+                $value.Length + 1)
+
+            $value[-1] = [ValueTuple[PowerShellRun.Key, ConsoleKey]]::new(
+                $slashKey,
+                [ConsoleKey]::Oem2)
+
+            $field.SetValue($null, $value)
+            $script:IsSlashInited = $true
+        }
+
+        $options.KeyBinding.QuitKeys = [PowerShellRun.KeyCombination]::new('Ctrl', 'C')
+        $options.KeyBinding.EnableTextInputInRemapMode = $false
+        $options.KeyBinding.InitialRemapMode = $true
+        $options.KeyBinding.RemapModeExitKeys = [PowerShellRun.KeyCombination]::new('None', $slashKey)
+        $options.KeyBinding.RemapModeEnterKeys = [PowerShellRun.KeyCombination]::new('None', 'Enter')
+
+        $remaps = @{
+            j = 'DownArrow'
+            k = 'UpArrow'
+            q = 'ctrl+c'
+            Space = 'Tab'
+        }
+
+        $options.KeyBinding.RemapKeys = foreach ($kvp in $remaps.GetEnumerator()) {
+            [PowerShellRun.RemapKey]::new([PowerShellRun.KeyCombination]::new($kvp.Key), [PowerShellRun.KeyCombination]::new($kvp.Value))
+        }
+
+        # $options.KeyBinding.RemapKeys = @(
+        #     [PowerShellRun.RemapKey]::new([PowerShellRun.KeyCombination]::new('j'), [PowerShellRun.KeyCombination]::new('DownArrow'))
+        #     [PowerShellRun.RemapKey]::new([PowerShellRun.KeyCombination]::new('k'), [PowerShellRun.KeyCombination]::new('UpArrow'))
+        #     [PowerShellRun.RemapKey]::new([PowerShellRun.KeyCombination]::new('q'), [PowerShellRun.KeyCombination]::new('Ctrl', 'C'))
+        #     [PowerShellRun.RemapKey]::new([PowerShellRun.KeyCombination]::new('Space'), [PowerShellRun.KeyCombination]::new('Tab'))
+        # )
+
+        $bg = '282828'
+        $hl = '303030'
+        $line = '5f5f5f'
+        $fg = 'e4e4e4'
+
+        $options.Theme.NameFocusStyle = [PowerShellRun.FontStyle]::Default
+        $options.Theme.NameFocusHighlightStyle = [PowerShellRun.FontStyle]::Default
+        $options.Theme.DescriptionFocusStyle = [PowerShellRun.FontStyle]::Default
+        $options.Theme.DescriptionFocusHighlightStyle = [PowerShellRun.FontStyle]::Default
+
+        $focusBg = [PowerShellRun.FontColor]::FromHex('#303030')
+        $focusFg = [PowerShellRun.FontColor]::FromHex('#e4e4e4')
+
+        $border = [PowerShellRun.FontColor]::FromHex("#5a5a5a")
+
+        $markerFg = [PowerShellRun.FontColor]::FromHex('#d7005f')
+
+        $options.Theme.SearchBarBorderForegroundColor = $border
+
+        $options.Theme.MarkerForegroundColor = $markerFg
+        $options.Theme.PromptForegroundColor = $markerFg
+        $options.Theme.CursorForegroundColor = $markerFg
+
+        $options.Theme.DescriptionHighlightForegroundColor = $focusFg
+        $options.Theme.DescriptionFocusHighlightForegroundColor = $focusFg
+        $options.Theme.NameHighlightForegroundColor = $focusFg
+        $options.Theme.NameFocusHighlightForegroundColor = $focusFg
+        $options.Theme.IconFocusForegroundColor = $focusFg
+        $options.Theme.NameFocusForegroundColor = $focusFg
+        $options.Theme.DescriptionFocusForegroundColor = $focusFg
+        $options.Theme.ActionWindowCursorForegroundColor = $focusFg
+
+        $options.Theme.MarkerBoxBackgroundColor = $focusBg
+        $options.Theme.NameFocusBackgroundColor = $focusBg
+        $options.Theme.DescriptionFocusBackgroundColor = $focusBg
+        $options.Theme.DescriptionHighlightBackgroundColor = $focusBg
+        $options.Theme.DescriptionFocusHighlightBackgroundColor = $focusBg
+        $options.Theme.NameHighlightBackgroundColor = $focusBg
+        $options.Theme.NameFocusHighlightBackgroundColor = $focusBg
+        $options.Theme.IconFocusBackgroundColor = $focusBg
+        $options.Theme.CursorBackgroundColor = $focusBg
+        $options.Theme.ActionWindowCursorBackgroundColor = $focusBg
+
+        $pipe = { Invoke-PSRunSelectorCustom -Option $options @PSRunParams }.GetSteppablePipeline($MyInvocation.CommandOrigin)
+        $pipe.Begin($MyInvocation.ExpectingInput)
+    }
+    process {
+        if (-not $InputObject) {
+            return
+        }
+
+        $entry = [PowerShellRun.SelectorEntry]::new()
+        $entry.Name = $InputObject
+        $entry.Description = 'whaaat'
+        $entry.UserData = $InputObject
+        # $entry
+        $PSRunParams['Entry'] = $entry
+        $pipe.Process($entry)
+    }
+    end {
+        $result = $pipe.End()
+        if ($result.KeyCombination.Modifier -eq 'Ctrl' -and $result.KeyCombination.Key -eq 'c') {
+            throw [PipelineStoppedException]::new()
+        }
+
+        $result
+    }
+}
+
+function Get-CustomDefaultSelectorOption {
+    end {
+        [PowerShellRun.SelectorOption] $options = Get-PSRunDefaultSelectorOption
+        $slashKey = default([PowerShellRun.Key])
+        $slashKey.value__ = 0x1000
+
+        if (-not $script:IsSlashInited) {
+            $field = Find-Type -Force -FullName PowerShellRun.KeyInput
+                | Find-Member -Static -Force _keyConsoleKeyTable
+
+            $value = $field.GetValue($null)
+            [Array]::Resize(
+                [ref] $value,
+                $value.Length + 1)
+
+            $value[-1] = [ValueTuple[PowerShellRun.Key, ConsoleKey]]::new(
+                $slashKey,
+                [ConsoleKey]::Oem2)
+
+            $field.SetValue($null, $value)
+            $script:IsSlashInited = $true
+        }
+
+        $options.KeyBinding.RestartKeys = [PowerShellRun.KeyCombination]::new('Ctrl', 'P')
+        $options.KeyBinding.ActionWindowOpenKeys = [PowerShellRun.KeyCombination]::new('Ctrl', 'H')
+        $options.KeyBinding.QuitKeys = [PowerShellRun.KeyCombination]::new('Ctrl', 'C')
+        $options.KeyBinding.PageDownKeys = [PowerShellRun.KeyCombination]::new('Ctrl', 'F')
+        $options.KeyBinding.PageUpKeys = [PowerShellRun.KeyCombination]::new('Ctrl', 'B')
+        $options.KeyBinding.PreviewPageDownKeys = [PowerShellRun.KeyCombination]::new('Ctrl, Shift', 'F')
+        $options.KeyBinding.PreviewPageUpKeys = [PowerShellRun.KeyCombination]::new('Ctrl, Shift', 'B')
+        $options.KeyBinding.EnableTextInputInRemapMode = $false
+        $options.KeyBinding.InitialRemapMode = $true
+        $options.KeyBinding.RemapModeExitKeys = [PowerShellRun.KeyCombination]::new('None', $slashKey)
+        $options.KeyBinding.RemapModeEnterKeys = [PowerShellRun.KeyCombination]::new('None', 'Enter')
+
+        $remaps = @{
+            j = 'DownArrow'
+            k = 'UpArrow'
+            q = 'ctrl+c'
+            Spacebar = 'Tab'
+            'shift+j' = 'shift+DownArrow'
+            'shift+k' = 'shift+UpArrow'
+            'shift+f' = 'ctrl+shift+f'
+            'shift+b' = 'ctrl+shift+b'
+        }
+
+        $options.KeyBinding.RemapKeys = foreach ($kvp in $remaps.GetEnumerator()) {
+            [PowerShellRun.RemapKey]::new([PowerShellRun.KeyCombination]::new($kvp.Key), [PowerShellRun.KeyCombination]::new($kvp.Value))
+        }
+
+        $bg = '282828'
+        $hl = '303030'
+        $line = '5f5f5f'
+        $fg = 'e4e4e4'
+
+        $options.Theme.NameFocusStyle = [PowerShellRun.FontStyle]::Default
+        $options.Theme.NameFocusHighlightStyle = [PowerShellRun.FontStyle]::Default
+        $options.Theme.DescriptionFocusStyle = [PowerShellRun.FontStyle]::Default
+        $options.Theme.DescriptionFocusHighlightStyle = [PowerShellRun.FontStyle]::Default
+
+        $focusBg = [PowerShellRun.FontColor]::FromHex('#303030')
+        $focusFg = [PowerShellRun.FontColor]::FromHex('#e4e4e4')
+
+        $border = [PowerShellRun.FontColor]::FromHex("#5a5a5a")
+
+        $markerFg = [PowerShellRun.FontColor]::FromHex('#d7005f')
+
+        $options.Theme.SearchBarBorderForegroundColor = $border
+
+        $options.Theme.MarkerForegroundColor = $markerFg
+        $options.Theme.PromptForegroundColor = $markerFg
+        $options.Theme.CursorForegroundColor = $markerFg
+
+        $options.Theme.DescriptionHighlightForegroundColor = $focusFg
+        $options.Theme.DescriptionFocusHighlightForegroundColor = $focusFg
+        $options.Theme.NameHighlightForegroundColor = $focusFg
+        $options.Theme.NameFocusHighlightForegroundColor = $focusFg
+        $options.Theme.IconFocusForegroundColor = $focusFg
+        $options.Theme.NameFocusForegroundColor = $focusFg
+        $options.Theme.DescriptionFocusForegroundColor = $focusFg
+        $options.Theme.ActionWindowCursorForegroundColor = $focusFg
+
+        $options.Theme.MarkerBoxBackgroundColor = $focusBg
+        $options.Theme.NameFocusBackgroundColor = $focusBg
+        $options.Theme.DescriptionFocusBackgroundColor = $focusBg
+        $options.Theme.DescriptionHighlightBackgroundColor = $focusBg
+        $options.Theme.DescriptionFocusHighlightBackgroundColor = $focusBg
+        $options.Theme.NameHighlightBackgroundColor = $focusBg
+        $options.Theme.NameFocusHighlightBackgroundColor = $focusBg
+        $options.Theme.IconFocusBackgroundColor = $focusBg
+        $options.Theme.CursorBackgroundColor = $focusBg
+        $options.Theme.ActionWindowCursorBackgroundColor = $focusBg
+
+        return $options
+    }
+}
+
+Set-PSRunDefaultSelectorOption (Get-CustomDefaultSelectorOption)
+
+function Invoke-WithEnv {
+    [CmdletBinding()]
+    param(
+        [string] $Command,
+        [string] $ArgumentList,
+        [hashtable] $Variables = @{}
+    )
+    begin {
+        [NoRunspaceAffinity()]
+        class ProcessReader {
+            [Process] $Process
+            [PSCmdlet] $Context
+            [System.Threading.Tasks.Task] $StdOutTask
+            [System.Threading.Tasks.Task] $StdErrTask
+            [System.Threading.Tasks.Task[]] $Tasks = [System.Threading.Tasks.Task[]]::new(2)
+
+            ProcessReader([Process] $process, [PSCmdlet] $context) {
+                $this.Process = $process
+                $this.Context = $context
+            }
+
+            [bool] WaitForAny() {
+                if (-not $this.StdOutTask -and -not $this.Process.StandardOutput.EndOfStream) {
+                    $this.StdOutTask = $this.Process.StandardOutput.ReadLineAsync()
+                }
+
+                $shouldReadStdErr = $this.Process.StartInfo.RedirectStandardError -and
+                    -not $this.StdErrTask -and
+                    -not $this.Process.StandardError.EndOfStream
+
+                if ($shouldReadStdErr) {
+                    $this.StdErrTask = $this.Process.StandardError.ReadLineAsync()
+                }
+
+                if ($this.StdOutTask -and $this.StdErrTask) {
+                    $this.Tasks[0] = $this.StdOutTask
+                    $this.Tasks[1] = $this.StdErrTask
+
+                    while ($true) {
+                        $index = [System.Threading.Tasks.Task]::WaitAny($this.Tasks, 200)
+                        if ($index -eq -1) {
+                            continue
+                        }
+
+                        if ($index -eq 0) {
+                            $this.ProcessStdOut($this.StdOutTask)
+                            return $true
+                        }
+
+                        $this.ProcessStdErr($this.StdErrTask)
+                        return $true
+                    }
+                }
+
+                if ($this.StdOutTask) {
+                    while (-not $this.StdOutTask.AsyncWaitHandle.WaitOne(200)) { }
+                    $this.ProcessStdOut($this.StdOutTask)
+                    return $true
+                }
+
+                if ($this.StdErrTask) {
+                    while (-not $this.StdErrTask.AsyncWaitHandle.WaitOne(200)) { }
+                    $this.ProcessStdErr($this.StdErrTask)
+                    return $true
+                }
+
+                return $false
+            }
+
+            [void] ProcessStdOut([System.Threading.Tasks.Task] $task) {
+                $line = $task.GetAwaiter().GetResult()
+                $this.StdOutTask = $null
+                $this.Context.WriteObject($line)
+            }
+
+            [void] ProcessStdErr([System.Threading.Tasks.Task] $task) {
+                $line = $task.GetAwaiter().GetResult()
+                $er = [ErrorRecord]::new(
+                    [RemoteException]::new($line),
+                    'NativeCommandError',
+                    [ErrorCategory]::NotSpecified,
+                    $line)
+
+                $this.StdErrTask = $null
+                $this.Context.WriteError($er)
+            }
+        }
+    }
+    end {
+        $startInfo = [ProcessStartInfo]::new($Command, $ArgumentList)
+        # $startInfo = [ProcessStartInfo]@{
+        #     # FileName = $Command
+        #     # Arguments = $ArgumentList
+        #     RedirectStandardOutput = $true
+        #     RedirectStandardError = $true
+        #     RedirectStandardInput = $true
+        #     UseShellExecute = $false
+        # }
+
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $false
+        $startInfo.RedirectStandardInput = $false
+        $startInfo.UseShellExecute = $false
+
+        foreach ($kvp in $Variables.GetEnumerator()) {
+            # if ($startInfo.Environment.ContainsKey($kvp.Name)) {
+                $startInfo.Environment[$kvp.Name] = $kvp.Value
+            #     continue
+            # }
+
+            # $startInfo.Environment.Add($kvp.Name, $kvp.Value)
+        }
+
+        $process = [Process]::Start($startInfo)
+        # if (-not $process.Start()) {
+        #     throw
+        # }
+
+        # $process.StandardInput.Close()
+        $reader = [ProcessReader]::new($process, $PSCmdlet)
+        while ($reader.WaitForAny()) { }
+
+        # while (-not $process.WaitForExit(200)) { }
+
+        # $task = $process.StandardOutput.ReadToEndAsync()
+        # while (-not $task.AsyncWaitHandle.WaitOne(200)) { }
+        # $task.GetAwaiter().GetResult()
+
+        # foreach ($task in $process.StandardError.ReadLineAsync()) {
+        #     while (-not $task.AsyncWaitHandle.WaitOne(200)) { }
+        #     $line = $task.GetAwaiter().GetResult()
+        #     $PSCmdlet.WriteError(
+        #         [ErrorRecord]::new(
+        #             [RemoteException]::new($line),
+        #             'NativeCommandError',
+        #             [ErrorCategory]::NotSpecified,
+        #             $line))
+        # }
+
+        # $tasks = [System.Threading.Tasks.Task[]]::new(2)
+        # while ($true) {
+        #     $stdOutIndex = -1
+        #     $stdErrIndex = -1
+        #     $i = 0
+        #     if (-not $process.StandardOutput.EndOfStream) {
+        #         $stdOutIndex = $i
+        #         $tasks[$i++] ??= $process.StandardOutput.ReadLineAsync()
+        #     }
+
+        #     if (-not $process.StandardError.EndOfStream) {
+        #         $stdErrIndex = $i
+        #         $tasks[$i++] ??= $process.StandardError.ReadLineAsync()
+        #     }
+
+        #     if ($i -eq 0) {
+        #         foreach ($task in $tasks) {
+        #             if ($null -eq $task) {
+        #                 continue
+        #             }
+
+        #             while ($task.AsyncWaitHandle.WaitOne(200)) { }
+        #             $task.GetAwaiter().GetResult()
+        #         }
+        #     }
+
+        #     while ($true) {
+        #         $readyIndex = [System.Threading.Tasks.Task]::WaitAny($tasks, 200)
+        #         if ($readyIndex -eq -1) {
+        #             continue
+        #         }
+
+        #         $task = $tasks[$readyIndex]
+        #         $line = $task.GetAwaiter().GetResult()
+        #         if ($readyIndex -eq $stdOutIndex) {
+        #             $PSCmdlet.WriteObject($line)
+        #             $tasks[$readyIndex] = $null
+        #             break
+        #         }
+
+        #         if ($readyIndex -eq $stdErrIndex) {
+        #             $er = [ErrorRecord]::new(
+        #                 [RemoteException]::new($line),
+        #                 'NativeCommandError',
+        #                 [ErrorCategory]::NotSpecified,
+        #                 $line)
+
+        #             $tasks[$readyIndex] = $null
+        #             $PSCmdlet.WriteError($er)
+        #             break
+        #         }
+        #     }
+        # }
+    }
+}
+
+function Invoke-PwshTriage {
+    [CmdletBinding()]
+    param()
+    begin {
+
+        class Label {
+            [string] $Name
+
+            [string] $Color
+
+            [bool] $Added
+
+            [bool] $Removed
+
+            Label([object] $json) {
+                $this.Name = $json.name
+                $this.Color = $json.color
+                $this.Added = $false
+                $this.Removed = $false
+            }
+
+            Label([string] $name, [string] $color) {
+                $this.Name = $name
+                $this.Color = $color
+                $this.Added = $false
+                $this.Removed = $false
+            }
+
+            Label([string] $name, [string] $color, [bool] $added, [bool] $removed) {
+                $this.Name = $name
+                $this.Color = $color
+                $this.Added = $added
+                $this.Removed = $removed
+            }
+
+            static [Label] Added([object] $json) {
+                return [Label]::Added($json.name, $json.color)
+            }
+
+            static [Label] Added([string] $name, [string] $color) {
+                return [Label]::new($name, $color, $true, $false)
+            }
+
+            static [Label] Removed([object] $json) {
+                return [Label]::Removed($json.name, $json.color)
+            }
+
+            static [Label] Removed([string] $name, [string] $color) {
+                return [Label]::new($name, $color, $false, $true)
+            }
+
+            [bool] Equals([object] $other) {
+                return $this.Name -eq $other.Name
+            }
+
+            [int] GetHashCode() {
+                return $this.Name.GetHashCode()
+            }
+        }
+
+        class Labeler {
+            [int] $Issue
+
+            [hashtable] $Labels
+
+            [hashtable] $LabelGroups
+
+            [List[Label]] $WorkingList
+
+            Labeler([int] $issue, [hashtable] $labels, [hashtable] $labelGroups, [List[Label]] $initialLabels) {
+                $this.Issue = $issue
+                $this.Labels = $labels
+                $this.LabelGroups = $labelGroups
+                $this.WorkingList = $initialLabels
+            }
+
+            [void] AddByName([string] $name) {
+                $this.WorkingList.Add([Label]::Added($this.Labels[$name]))
+            }
+
+            [void] Add([object] $jsonLabel) {
+                $this.WorkingList.Add([Label]::Added($jsonLabel))
+            }
+
+            [void] Show() {
+                $options = Get-PSRunDefaultSelectorOption
+
+                $remaps = @{
+                    'x' = 'ctrl+x'
+                    'i' = 'ctrl+i'
+                    'w' = 'ctrl+w'
+                    's' = 'ctrl+s'
+                }
+
+                $options.KeyBinding.RemapKeys = @(
+                    $options.KeyBinding.RemapKeys
+
+                    foreach ($kvp in $remaps.GetEnumerator()) {
+                        ('PowerShellRun.RemapKey' -as [type])::new(
+                            ('PowerShellRun.KeyCombination' -as [type])::new($kvp.Key),
+                            ('PowerShellRun.KeyCombination' -as [type])::new($kvp.Value))
+                    }
+                )
+
+                $context = @{}
+                while ($true) {
+                    $result = & {
+                        $style = $global:PSStyle
+                        foreach ($label in $this.WorkingList) {
+                            $entry = ('PowerShellRun.SelectorEntry' -as [type])::new()
+                            $entry.UserData = $label
+                            $entry.ActionKeys = @(
+                                $options.KeyBinding.DefaultActionKeys
+                                ('PowerShellRun.ActionKey' -as [type])::new('ctrl+x', 'Remove')
+                                ('PowerShellRun.ActionKey' -as [type])::new('ctrl+i', 'Add')
+                                ('PowerShellRun.ActionKey' -as [type])::new('ctrl+w', 'Assign working group')
+                                ('PowerShellRun.ActionKey' -as [type])::new('ctrl+s', 'Solve with resolution')
+                            )
+
+                            if ($label.Removed) {
+                                $entry.Name = $style.Strikethrough + $label.Name + $style.StrikethroughOff
+                                # The `StrikethroughOff` above seems to get trimmed out for some reason,
+                                # so we add a dummy description to force it.
+                                $entry.Description = $style.StrikethroughOff + "`u{00a0}"
+                            } elseif ($label.Added) {
+                                $entry.Name = $style.Italic + $label.Name + $style.ItalicOff
+                                # The above issue with strikethrough is probably also true here, but
+                                # is untested.
+                                $entry.Description = $style.ItalicOff + "`u{00a0}"
+                            } else {
+                                $entry.Name = $label.Name
+                            }
+
+                            $entry
+                        }
+                    } | Invoke-PSRunSelectorCustom -Option $options @context
+
+                    $context['Context'] = $result.Context
+
+                    if ($result.KeyCombination.Modifier -eq 'Ctrl') {
+                        $key = $result.KeyCombination.Key
+                        if ($key -eq 'c') {
+                            $this.WorkingList.Clear()
+                            return
+                        }
+
+                        if ($key -eq 'x') {
+                            if (-not $result.FocusedEntry) {
+                                continue
+                            }
+
+                            $focused = $result.FocusedEntry.UserData
+                            if ($focused.Added) {
+                                $this.WorkingList.Remove($focused)
+                                continue
+                            }
+
+                            $focused.Removed = -not $focused.Removed
+                            continue
+                        }
+
+                        if ($key -eq 'w') {
+                            $wgToAdd = $this.LabelGroups['Workgroups'] |
+                                Invoke-PSRunSelector -NameProperty name
+
+                            if (-not $wgToAdd) {
+                                continue
+                            }
+
+                            if ($this.WorkingList.Name -notcontains 'WG-NeedsReview') {
+                                $this.AddByName('WG-NeedsReview')
+                            }
+
+                            $this.Add($wgToAdd)
+                            continue
+                        }
+
+                        if ($key -eq 's') {
+                            $resolution = $this.LabelGroups['Resolution'] |
+                                Invoke-PSRunSelector -NameProperty name
+
+                            if (-not $resolution) {
+                                continue
+                            }
+
+                            if ($resolution.Name -eq 'Resolution-Answered') {
+                                $isQuestionAdded = $false
+                                foreach ($label in $this.WorkingList.ToArray()) {
+                                    if (-not $label.Name.StartsWith('Issue-', [StringComparison]::OrdinalIgnoreCase)) {
+                                        continue
+                                    }
+
+                                    if ($label.Name -eq 'Issue-Question') {
+                                        $isQuestionAdded = $true
+                                        $label.Removed = $false
+                                        continue
+                                    }
+
+                                    if ($label.Added) {
+                                        $this.WorkingGroup.Remove($label)
+                                        continue
+                                    }
+
+                                    $label.Removed = $true
+                                }
+
+                                if (-not $isQuestionAdded) {
+                                    $this.AddByName('Issue-Question')
+                                }
+                            }
+
+                            $this.Add($resolution)
+                            continue
+                        }
+
+                        if ($key -eq 'i') {
+                            $labelsToAdd = & {
+                                $this.Labels['WG-NeedsReview']
+                                $this.LabelGroups['Workgroups']
+                                $this.LabelGroups['Issue']
+                                $this.LabelGroups['Resolution']
+                            } | Where-Object name -notin $this.WorkingList.Name |
+                                Invoke-PSRunSelector -MultiSelection -NameProperty name
+
+                            foreach ($label in $labelsToAdd) {
+                                $this.Add($label)
+                            }
+
+                            continue
+                        }
+                    }
+
+                    if ($result.KeyCombination.Key -eq 'Enter') {
+                        break
+                    }
+                }
+            }
+        }
+    }
+    end {
+        $allLabels = gh label list --repo PowerShell/PowerShell --limit 200 --json 'name,color'
+            | ConvertFrom-Json
+            | Group-Object -AsHashTable -AsString -Property name
+
+        $addableLabels = @{
+            Workgroups = (
+                $allLabels['WG-Engine'],
+                $allLabels['WG-Cmdlets'],
+                $allLabels['WG-Interactive-Console'],
+                $allLabels['WG-Language'],
+                $allLabels['WG-Remoting'],
+                $allLabels['WG-Security'],
+                $allLabels['Area-Maintainers-Build'],
+                $allLabels['Area-Maintainers-Documentation'])
+            Issue = (
+                $allLabels['Issue-Bug'],
+                $allLabels['Issue-Question'],
+                $allLabels['Issue-Enhancement'],
+                $allLabels['Issue-Regression'])
+            Resolution = (
+                $allLabels['Resolution-Answered'],
+                $allLabels['Resolution-Duplicate'],
+                $allLabels['Resolution-External'],
+                $allLabels['Resolution-Won''t Fix'],
+                $allLabels['Resolution-By Design'],
+                $allLabels['Resolution-Fixed'],
+                $allLabels['Resolution-Declined'],
+                $allLabels['Resolution-No Activity'])
+        }
+
+        $wgLabels = (
+            'WG-Interactive-PSReadLine', 'WG-Interactive-Console',
+            'WG-Interactive-Debugging', 'WG-Interactive-IntelliSense',
+            'WG-Interactive-HelpSystem', 'WG-Engine', 'WG-Engine-Performance',
+            'WG-Engine-Providers', 'WG-Engine-Format', 'WG-Engine-ETS',
+            'WG-Engine-ParameterBinder', 'WG-Engine-Pipeline',
+            'WG-Engine-Module', 'WG-Cmdlets', 'WG-Cmdlets-Utility',
+            'WG-Cmdlets-Management', 'WG-Cmdlets-Core', 'WG-Language',
+            'WG-DevEx-Portability', 'WG-DevEx-SDK', 'WG-Remoting',
+            'WG-Security', 'Area-Maintainers-Build')
+
+        $dontInclude = [System.Collections.Generic.HashSet[string]]$wgLabels
+
+        [PowerShellRun.SelectorOption] $options = Get-PSRunDefaultSelectorOption
+        $options.Theme.PreviewSizePercentage = 80
+        $options.Theme.CanvasHeightPercentage = 90
+        $options.EntryCycleScrollEnable = $false
+
+        $remaps = @{
+            'o' = 'ctrl+o'
+            'r' = 'ctrl+r'
+            'e' = 'ctrl+e'
+        }
+
+        $options.KeyBinding.RemapKeys = @(
+            $options.KeyBinding.RemapKeys
+
+            foreach ($kvp in $remaps.GetEnumerator()) {
+                [PowerShellRun.RemapKey]::new(
+                    [PowerShellRun.KeyCombination]::new($kvp.Key),
+                    [PowerShellRun.KeyCombination]::new($kvp.Value))
+            }
+        )
+
+        $global:lastOptions = $options
+
+        $loader = {
+            Find-Issue --repo 'PowerShell/PowerShell' -State Open --label 'Needs-Triage' | & { process {
+
+                $dontInclude = $dontInclude
+                foreach ($name in $_.labels.name) {
+                    if ($dontInclude.Contains($name)) {
+                        return
+                    }
+                }
+
+                $entry = [PowerShellRun.SelectorEntry]::new()
+                $entry.UserData = $_
+                $entry.ActionKeys = @(
+                    $options.KeyBinding.DefaultActionKeys
+                    [PowerShellRun.ActionKey]::new('ctrl+o', 'Open in web')
+                    # [PowerShellRun.ActionKey]::new('ctrl+x', 'Remove labels')
+                    # [PowerShellRun.ActionKey]::new('ctrl+s', 'Add resolution')
+                    # [PowerShellRun.ActionKey]::new('ctrl+w', 'Add workgroup')
+                    # [PowerShellRun.ActionKey]::new('ctrl+i', 'Add issue label')
+                    [PowerShellRun.ActionKey]::new('ctrl+e', 'Edit labels')
+                    [PowerShellRun.ActionKey]::new('ctrl+r', 'Reload')
+                )
+
+                $entry.Name = $_.title
+                $entry.PreviewAsyncScript = {
+                    param([int] $number, [scriptblock] $func)
+                    ${function:Invoke-WithEnv} = $func.Ast.Body.GetScriptBlock()
+                    Invoke-WithEnv gh "issue view $number --repo PowerShell/PowerShell --comments" @{
+                        GH_FORCE_TTY = [Console]::WindowWidth
+                    }
+
+                    # gh issue view $args[0] --repo PowerShell/PowerShell --comments
+                    # $oldValue = $env:GH_FORCE_TTY
+                    # try {
+                    #     $env:GH_FORCE_TTY = [Console]::WindowWidth
+                    #     gh issue view $args[0] --repo PowerShell/PowerShell --comments
+                    # } finally {
+                    #     $env:GH_FORCE_TTY = $oldValue
+                    # }
+                }
+
+                $entry.PreviewAsyncScriptArgumentList = $_.number, ${function:Invoke-WithEnv}
+
+                $entry
+            }}
+        }
+
+        $needsTriage = & $loader
+
+        $context = @{}
+        while ($true) {
+            $result = $needsTriage | Invoke-PSRunSelectorCustom -Option $options @context
+            if ($result.KeyCombination.Modifier -eq 'Ctrl' -and $result.KeyCombination.Key -eq 'C') {
+                return
+            }
+
+            $focused = $result.FocusedEntry.UserData
+            if (-not $focused) {
+                continue
+            }
+
+            $context['Context'] = $result.Context
+            if ($result.KeyCombination.Modifier -eq 'Ctrl') {
+                $key = $result.KeyCombination.Key
+                if ($key -eq 'o') {
+                    $null = gh issue view $result.FocusedEntry.UserData.number --repo PowerShell/PowerShell --web
+                    continue
+                }
+
+                if ($key -eq 'r') {
+                    $needsTriage = & $loader
+                    continue
+                }
+
+                if ($key -eq 'x') {
+                    if (-not $result.FocusedEntry.UserData.labels) {
+                        continue
+                    }
+
+                    $removalResult = $result.FocusedEntry.UserData.labels |
+                        Invoke-PSRunSelector -MultiSelection -NameProperty name -DescriptionProperty description
+
+                    foreach ($entry in $removalResult) {
+                        gh issue edit --repo PowerShell/PowerShell $result.FocusedEntry.UserData.number --remove-label $entry.name
+                        if ($LASTEXITCODE) {
+                            throw $LASTEXITCODE
+                        }
+                    }
+
+                    continue
+                }
+
+                if ($key -eq 's') {
+                    $labelToAdd = $addableLabels['Resolution'] |
+                        Invoke-PSRunSelector -NameProperty name -DescriptionProperty description
+
+                    if (-not $labelToAdd) {
+                        continue
+                    }
+
+                    "gh issue edit --repo PowerShell/PowerShell $($result.FocusedEntry.UserData.number) --add-label $($labelToAdd.name)"
+                    if ($LASTEXITCODE) {
+                        throw
+                    }
+
+                    continue
+                }
+
+                if ($key -eq 'w') {
+                    $labelToAdd = $addableLabels['Workgroups'] |
+                        Invoke-PSRunSelector -NameProperty name -DescriptionProperty description
+
+                    if (-not $labelToAdd) {
+                        continue
+                    }
+
+                    foreach ($label in ($labelToAdd.name, 'WG-NeedsReview')) {
+                        "gh issue edit --repo PowerShell/PowerShell $($result.FocusedEntry.UserData.number) --add-label $label"
+                        if ($LASTEXITCODE) {
+                            throw
+                        }
+                    }
+
+                    continue
+                }
+
+                if ($key -eq 'i') {
+                    $labelToAdd = $addableLabels['Issue'] |
+                        Invoke-PSRunSelector -NameProperty name -DescriptionProperty description
+
+                    if (-not $labelToAdd) {
+                        continue
+                    }
+
+                    "gh issue edit --repo PowerShell/PowerShell $($result.FocusedEntry.UserData.number) --add-label $($labelToAdd.name)"
+                    if ($LASTEXITCODE) {
+                        throw
+                    }
+
+                    continue
+                }
+
+                if ($key -eq 'e') {
+                    $labeler = [Labeler]::new($focused.number, $allLabels, $addableLabels, $focused.labels)
+                    $labeler.Show()
+                    $changes = $labeler.WorkingList
+                    if (-not $changes) {
+                        continue
+                    }
+
+                    $toRemove = $changes | Where-Object Removed -eq $true
+                    $toAdd = $changes | Where-Object Added -eq $true
+
+                    if (-not ($toAdd -or $toRemove)) {
+                        continue
+                    }
+
+                    $argList = @(
+                        'issue'
+                        'edit'
+                        '--repo'
+                        'PowerShell/PowerShell'
+                        $focused.number
+                        if ($toRemove) {
+                            '--remove-label'
+                            $toRemove.Name -join ','
+                        }
+
+                        if ($toAdd) {
+                            '--add-label'
+                            $toAdd.Name -join ','
+                        }
+                    )
+
+                    gh @argList
+                    continue
+                }
+            }
+
+            return $result
+        }
+    }
+}
+
+function Update-Symlink {
+    [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'Path')]
+    param(
+        [Parameter(ValueFromPipeline, ParameterSetName = 'Path', Mandatory, Position = 0)]
+        [SupportsWildcards()]
+        [ValidateNotNullOrEmpty()]
+        [string] $Path,
+
+        [Parameter(ValueFromPipelineByPropertyName, ParameterSetName = 'LiteralPath', Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $LiteralPath,
+
+        [Parameter(ValueFromPipelineByPropertyName, Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Target
+    )
+    process {
+        $splat = @{ ErrorAction = 'Stop' }
+        $inputString = $null
+        if ($PSCmdlet.ParameterSetName -eq 'Path') {
+            $splat['Path'] = $Path
+            $inputString = $Path
+        } else {
+            $splat['LiteralPath'] = $LiteralPath
+            $inputString = $LiteralPath
+        }
+
+        $psDrive = $provider = $null
+        $solvedValue = $PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+            $Target,
+            [ref] $psDrive,
+            [ref] $provider)
+
+        if (Test-Path @splat -ErrorAction Stop) {
+            $item = Get-Item @splat
+            if (-not $item.Attributes.HasFlag([System.IO.FileAttributes]::ReparsePoint)) {
+                $PSCmdlet.WriteError(
+                    [ErrorRecord]::new(
+                        <# exception: #> [PSArgumentException]::new(
+                            ('Target path "{0}" is not a symlink.' -f $inputString),
+                            $PSCmdlet.ParameterSetName),
+                        <# errorId: #> 'TargetNotSymlink',
+                        <# errorCategory: #> [ErrorCategory]::InvalidArgument,
+                        <# targetObject: #> $inputString))
+
+                return
+            }
+
+            if ($item.Target -eq $solvedValue) {
+                $PSCmdlet.WriteVerbose("'$inputString' already points to '$solvedValue', skipping.")
+                return
+            }
+
+            Remove-Item @splat
+        }
+
+        $null = New-Item @splat -ItemType SymbolicLink -Value $solvedValue
+    }
+}
+
+function Find-Header {
+    param(
+        [string] $Name,
+
+        [string] $LiteralName
+    )
+    end {
+        $target = Search-Everything -Global -PathInclude 'Windows Kits\10\Include' -ChildFileName 'cppwinrt' |
+            Sort-Object { ($_ | Split-Path -Leaf) -as [version] } |
+            Select-Object -Last 1
+
+        Search-Everything -Global -PathInclude $target -Extension '.h' | & {
+            process {
+                $name = $Name
+                $literalName = $LiteralName
+                $target = $target
+
+                $afterVersion = $_.Replace($target, '').TrimStart([char]'\')
+                $fileName = $afterVersion | Split-Path -Leaf
+                if ($name -and $fileName -notlike $name) {
+                    return
+                } elseif ($literalName -and $fileName -ne $literalName) {
+                    return
+                }
+
+                $pso = [pscustomobject]@{
+                    PSTypeName = 'UtilityProfile.HeaderFile'
+                    Name = $fileName
+                    Category = $afterVersion | Split-Path
+                    PSPath = $_
+                }
+
+                $pso.psobject.Methods.Add(
+                    [psscriptmethod]::new(
+                        'ToString',
+                        { $this.PSPath }));
+
+                $pso
+            }
+        }
     }
 }

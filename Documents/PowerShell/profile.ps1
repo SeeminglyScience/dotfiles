@@ -42,6 +42,9 @@ $alias:fet       = 'Format-ExpressionTree'
 $alias:lib       = 'New-CtypesLib'
 $alias:struct    = 'New-CtypesStruct'
 $alias:fires     = 'Find-PSResource'
+$alias:se        = 'Search-Everything'
+$alias:spp       = 'Split-Path'
+$alias:jp        = 'Join-Path'
 
 # Aliases from Utility.psm1
 # number       = ConvertTo-Number
@@ -181,9 +184,56 @@ $PSDefaultParameterValues['Find-Type:ResolutionMap'] = $PSDefaultParameterValues
     & $PSScriptRoot\PSReadLine.ps1
     & $PSScriptRoot\SetTypeCache.ps1
 
-    if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
+    if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 5 -and $IsWindows) {
         & $PSScriptRoot\CompletionExtensions.ps1
         # & $PSScriptRoot\LinqETS.ps1
+
+        $mostRecent = Get-ChildItem -File -LiteralPath $PSScriptRoot/Profile/src/Profile -Include *.cs, *.csproj |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1 |
+            Select-Object -ExpandProperty LastWriteTime
+
+        $compiledMarkerPath = Join-Path $PSScriptRoot Profile/out/lastcompiled.txt
+        $shouldCompile = $false
+        if (-not (Test-Path -LiteralPath $compiledMarkerPath)) {
+            $shouldCompile = $true
+        } elseif ($mostRecent -gt ([datetime](Get-Content -LiteralPath $compiledMarkerPath -Raw).Trim())) {
+            $shouldCompile = $true
+        }
+
+        $configuration = 'Release'
+        if ($env:DEBUG_PROFILE_CSPROJ) {
+            $configuration = 'Debug'
+            $shouldCompile = $true
+        }
+
+        if ($shouldCompile) {
+            dotnet publish $PSScriptRoot/Profile/src/Profile/Profile.csproj --configuration $configuration --output $PSScriptRoot/Profile/out --nologo
+            if (-not $LASTEXITCODE) {
+                Set-Content -LiteralPath $compiledMarkerPath -Value (Get-Date)
+            }
+        }
+
+        $peStream = $pdbStream = $null
+        try {
+            $peStream = [System.IO.File]::OpenRead((Join-Path $PSScriptRoot Profile/out/Profile.dll))
+            $pdbStream = [System.IO.File]::OpenRead((Join-Path $PSScriptRoot Profile/out/Profile.pdb))
+
+            $loadedAssembly = [System.Runtime.Loader.AssemblyLoadContext]::Default.LoadFromStream(
+                $peStream,
+                $pdbStream)
+
+            Import-Module -Global -Assembly $loadedAssembly
+
+        } finally {
+            if ($pdbStream -is [System.IDisposable]) {
+                ([System.IDisposable]$pdbStream).Dispose()
+            }
+
+            if ($peStream -is [System.IDisposable]) {
+                ([System.IDisposable]$peStream).Dispose()
+            }
+        }
     }
 
     if ($psEditor) {
@@ -198,7 +248,7 @@ $PSDefaultParameterValues['Find-Type:ResolutionMap'] = $PSDefaultParameterValues
         Import-Module -Global -Name ClassExplorer -ErrorAction Ignore
     }
 
-    Import-Module -Global -Name $PSScriptRoot\Utility.psm1
+    Import-Module -Global -Name $PSScriptRoot\Utility.psm1 -DisableNameChecking
     $chocoPsm1Path = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
     if (Test-Path $chocoPsm1Path) {
         Import-Module -Global $chocoPsm1Path

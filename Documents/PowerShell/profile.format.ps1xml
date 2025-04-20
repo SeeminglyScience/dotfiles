@@ -954,6 +954,29 @@
             </TableControl>
         </View>
         <View>
+            <Name>UtilityProfile.HeaderFile</Name>
+            <ViewSelectedBy>
+                <TypeName>UtilityProfile.HeaderFile</TypeName>
+            </ViewSelectedBy>
+            <GroupBy>
+                <PropertyName>Category</PropertyName>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader />
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <PropertyName>Name</PropertyName>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
             <Name>UtilityProfile.EnvironmentVariable</Name>
             <ViewSelectedBy>
                 <TypeName>UtilityProfile.EnvironmentVariable</TypeName>

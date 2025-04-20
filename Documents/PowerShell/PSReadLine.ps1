@@ -1,7 +1,7 @@
 if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
     Import-Module CompletionPredictor -Global
     Set-PSReadLineOption -PredictionSource HistoryAndPlugin -PredictionViewStyle ListView
-} else {
+} elseif ($PSVersionTable.PSVersion.Major -gt 5) {
     Set-PSReadLineOption -PredictionSource History -PredictionViewStyle ListView
 }
 

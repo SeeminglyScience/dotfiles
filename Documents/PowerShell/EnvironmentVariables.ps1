@@ -1,4 +1,7 @@
-﻿class EnvironmentVariable {
+﻿using namespace System.Collections.Generic
+using namespace Microsoft.PowerShell.Commands
+
+class EnvironmentVariable {
     [string] $Name
 
     [string] $Value
@@ -218,7 +221,7 @@ class PathEntry : PartialPathEntry {
                     (Compress-EnvironmentVariable $part),
                     $start++,
                     $scope,
-                        $variableName))
+                    $variableName))
         }
     }
 }

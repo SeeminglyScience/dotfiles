@@ -2071,7 +2071,6 @@ function Get-BaseException {
 }
 
 function Show-Exception {
-    [Alias('se')]
     [CmdletBinding(PositionalBinding = $false)]
     param(
         [Parameter(ValueFromPipeline)]
@@ -2487,6 +2486,8 @@ function Get-NativeExport {
         }
 
         $LibraryNameRvaOffset = 12
+        $RvaCountOffset = 20
+        $RvaTableRvaOffset = 28
         $NameCountOffset = 24
         $NameTableRvaOffset = 32
     }
@@ -2520,6 +2521,13 @@ function Get-NativeExport {
 
             $exportReader.Offset = $NameCountOffset
             $nameCount = $exportReader.ReadInt32()
+            $exportReader.Offset = $RvaCountOffset
+            $rvaCount = $exportReader.ReadInt32()
+
+            $exportReader.Offset = $RvaTableRvaOffset
+            $rvaTableData = $peReader.GetSectionData($exportReader.ReadInt32())
+            $RvaRvaReader = $rvaTableData.GetReader(0, $rvaCount * 8)
+
             $exportReader.Offset = $NameTableRvaOffset
             $nameTableData = $peReader.GetSectionData($exportReader.ReadInt32())
             $nameRvaReader = $nameTableData.GetReader(0, $nameCount * 8)
@@ -2528,11 +2536,15 @@ function Get-NativeExport {
                 $nameReader = $peReader.GetSectionData($nameRvaReader.ReadInt32()).GetReader()
                 $offset = $nameReader.IndexOf(0)
 
+                $currentExport = $RvaRvaReader.ReadInt32()
+                $currentForwarder = $RvaRvaReader.ReadInt32()
+
                 # yield
                 [PSCustomObject]@{
                     PSTypeName = 'PEExport'
                     Parent = $libName
                     Name = [Encoding]::ASCII.GetString($nameReader.ReadBytes($offset + 1))
+                    RVA = $currentExport
                 }
             }
         } finally {
@@ -3954,7 +3966,7 @@ class IsSafeDisposableFactoryVisitor : ICustomAstVisitor2 {
 
     [object] VisitUsingExpression([UsingExpressionAst] $usingExpressionAst) { return $false }
 
-    [object] VisitVariableExpression([VariableExpressionAst] $variableExpressionAst) { return $false }
+    [object] VisitVariableExpression([VariableExpressionAst] $variableExpressionAst) { return $true }
 
     [object] VisitTypeExpression([TypeExpressionAst] $typeExpressionAst) { return $false }
 
@@ -4079,7 +4091,8 @@ function Use-Object {
             try {
                 $Action.InvokeWithContext(@{}, $variables, $arguments)
             } catch {
-                $PSCmdlet.WriteError($PSItem)
+                throw
+                # $PSCmdlet.WriteError($PSItem)
             }
         } finally {
             [Threading.Monitor]::Enter($syncRoot)
@@ -6276,10 +6289,241 @@ function Update-DotNet {
     }
 }
 
+# function Invoke-WithPipe {
+#     [CmdletBinding(PositionalBinding = $false)]
+#     param(
+#         [Parameter(Position = 0, Mandatory)]
+#         [ValidateNotNull()]
+#         [PSCmdlet] $Context,
+
+#         [Parameter(Position = 1, Mandatory)]
+#         [ValidateNotNull()]
+#         [scriptblock] $Body,
+
+#         [Parameter()]
+#         [ValidateSet('WriteToCurrentErrorPipe', 'WriteToExternalErrorPipe', 'SwallowErrors')]
+#         [string] $ErrorHandlingBehavior = 'WriteToCurrentErrorPipe',
+
+#         [Parameter()]
+#         [object] $DollarUnder,
+
+#         [Parameter()]
+#         [object] $ScriptInput,
+
+#         [Parameter()]
+#         [object] $ScriptThis,
+
+#         [Parameter()]
+#         [object] $Pipe,
+
+#         [Parameter()]
+#         [switch] $DoNotPropagateExceptionsToTop,
+
+#         [Parameter()]
+#         [ValidateNotNull()]
+#         [hashtable] $Variables = @{},
+
+#         [Parameter()]
+#         [ValidateNotNull()]
+#         [hashtable] $Functions = @{},
+
+#         [Parameter()]
+#         [AllowEmptyCollection()]
+#         [AllowNull()]
+#         [AllowEmptyString()]
+#         [object[]] $ArgumentList = @(),
+
+#         [Parameter()]
+#         [switch] $PassThru
+#     )
+#     end {
+#         if (-not $Pipe) {
+#             $cmdlet = $Context
+#             if ($PassThru) {
+#                 $cmdlet = $PSCmdlet
+#             }
+
+#             $fc = $cmdlet.GetType().GetField('_functionContext', 60).GetValue($cmdlet)
+#             $Pipe = $fc.GetType().GetField('_outputPipe', 60).GetValue($fc)
+#         }
+
+#         $ecType = [ref].Assembly.GetType('System.Management.Automation.ExecutionContext')
+#         $scriptInfo = [ScriptInfo].
+#             GetConstructor(60, @([string], [scriptblock], $ecType)).
+#             Invoke(@(
+#                 '',
+#                 $Body.psobject.BaseObject,
+#                 $ExecutionContext.GetType().GetField('_context', 60).GetValue($ExecutionContext)))
+
+#         $functionDict = [Dictionary[string, scriptblock]]::new()
+#         foreach ($kvp in $Functions.GetEnumerator()) {
+#             $functionDict.Add($kvp.Key, $kvp.Value)
+#         }
+
+#         $variableList = [List[psvariable]]::new()
+#         foreach ($kvp in $Variables.GetEnumerator()) {
+#             $variableList.Add([psvariable]::new($kvp.Key, $kvp.Value))
+#         }
+
+#         $ehbType = [ref].Assembly.GetType('System.Management.Automation.ScriptBlock+ErrorHandlingBehavior')
+#         $pipeType = [ref].Assembly.GetType('System.Management.Automation.Internal.Pipe')
+#         $invokeWithPipe = [scriptblock].GetMethod(
+#             'InvokeWithPipe',
+#             60,
+#             $null,
+#             [type[]](
+#                 [bool],
+#                 $ehbType,
+#                 [object],
+#                 [object],
+#                 [object],
+#                 $pipeType,
+#                 [InvocationInfo],
+#                 [bool],
+#                 [List[psvariable]],
+#                 [Dictionary[string, ScriptBlock]],
+#                 [object[]]),
+#             $null)
+
+#         $invokeWithPipe.Invoke(
+#             $Body,
+#             @(
+#                 $true,
+#                 $ehbType::$ErrorHandlingBehavior,
+#                 $DollarUnder,
+#                 $ScriptInput,
+#                 $ScriptThis,
+#                 $Pipe,
+#                 [InvocationInfo]::Create($scriptInfo, $Context.MyInvocation.DisplayScriptPosition),
+#                 -not $DoNotPropagateExceptionsToTop,
+#                 $variableList
+#                 $functionDict,
+#                 $ArgumentList))
+#     }
+# }
+
+function Invoke-WithTempFolder {
+    [Alias('temp')]
+    [CmdletBinding()]
+    param(
+        [scriptblock] $Body
+    )
+    end {
+        $temp = if ($PSVersionTable.PSVersion.Major -ge 7) { 'temp:\' } else { [IO.Path]::GetTempPath() }
+        $baseName = 'InvokeWithTempFolder-' + ([IO.Path]::GetRandomFileName())
+        $base = Join-Path $temp $baseName
+
+        # $functions = [Dictionary[string, scriptblock]]::new()
+        $filesScriptBlock = {
+            [CmdletBinding(PositionalBinding = $false)]
+            param(
+                [Parameter(Mandatory, Position = 0)]
+                [ValidateNotNull()]
+                [hashtable] $Map,
+
+                [Parameter()]
+                [ValidateNotNullOrEmpty()]
+                [string] $Base
+            )
+            end {
+                $stop = @{ ErrorAction = 'Stop' }
+                if (-not $Base) {
+                    $base = ${++InvokeWithTempFolder_base}
+                }
+
+                foreach ($kvp in $Map.GetEnumerator()) {
+                    $item = Join-Path $base -ChildPath $kvp.Key
+                    $parent = $item | Split-Path
+                    if (-not (Test-Path -LiteralPath $parent)) {
+                        $null = New-Item $parent -ItemType Directory @stop
+                    }
+
+                    if ($kvp.Value -is [hashtable]) {
+                        & $MyInvocation.MyCommand.ScriptBlock $kvp.Value -Base (Join-Path $base $kvp.Key)
+                        continue
+                    }
+
+                    if ($kvp.Value -is [byte[]]) {
+                        Set-Content -LiteralPath $item -Value $kvp.Value -AsByteStream @stop
+                        continue
+                    }
+
+                    Set-Content -LiteralPath $item -Value $kvp.Value @stop
+                }
+            }
+        }.Ast.GetScriptBlock()
+
+        # $functions.Add('files', $filesScriptBlock)
+
+        try {
+            $base = (New-Item -Path $base -ItemType Directory).FullName
+            $invokeWithPipeSplat = @{
+                DollarUnder = $base
+                Variables = @{ '++InvokeWithTempFolder_base' = $base }
+                Functions = @{ files = $filesScriptBlock }
+                Context = $PSCmdlet
+                Body = $Body
+                ArgumentList = $base
+            }
+
+            Invoke-WithPipe @invokeWithPipeSplat
+            # $ehbType = [ref].Assembly.GetType('System.Management.Automation.ScriptBlock+ErrorHandlingBehavior')
+            # $pipeType = [ref].Assembly.GetType('System.Management.Automation.Internal.Pipe')
+            # $invokeWithPipe = [scriptblock].GetMethod(
+            #     'InvokeWithPipe',
+            #     60,
+            #     $null,
+            #     [type[]](
+            #         [bool],
+            #         $ehbType,
+            #         [object],
+            #         [object],
+            #         [object],
+            #         $pipeType,
+            #         [InvocationInfo],
+            #         [bool],
+            #         [List[psvariable]],
+            #         [Dictionary[string, ScriptBlock]],
+            #         [object[]]),
+            #     $null)
+
+            # $fc = $PSCmdlet.GetType().GetField('_functionContext', 60).GetValue($PSCmdlet)
+            # $pipe = $fc.GetType().GetField('_outputPipe', 60).GetValue($fc)
+
+            # $ecType = [ref].Assembly.GetType('System.Management.Automation.ExecutionContext')
+            # $scriptInfo = [ScriptInfo].
+            #     GetConstructor(60, @([string], [scriptblock], $ecType)).
+            #     Invoke(@(
+            #         '',
+            #         $Body.psobject.BaseObject,
+            #         $ExecutionContext.GetType().GetField('_context', 60).GetValue($ExecutionContext)))
+
+            # $invokeWithPipe.Invoke(
+            #     $Body,
+            #     @(
+            #         $true,
+            #         $ehbType::WriteToCurrentErrorPipe,
+            #         $base,
+            #         $null,
+            #         $null,
+            #         $pipe,
+            #         [InvocationInfo]::Create($scriptInfo, $MyInvocation.DisplayScriptPosition),
+            #         $true,
+            #         [List[psvariable]](
+            #             [psvariable]::new('++InvokeWithTempFolder_base', $base)),
+            #         $functions,
+            #         @($base)))
+        } finally {
+            Remove-Item -LiteralPath $base -Recurse
+        }
+    }
+}
+
 if ($PSVersionTable.PSVersion.Major -ge 7 -and $PSVersionTable.PSVersion.Minor -ge 3) {
     . "$PSScriptRoot\PreviewCommands.ps1"
     . "$PSScriptRoot\InstallPwshCommands.ps1"
     . "$PSScriptRoot\EnvironmentVariables.ps1"
+    . "$PSScriptRoot\WindowCommands.ps1"
 }
 
 . "$PSScriptRoot\intrinsics.ps1"

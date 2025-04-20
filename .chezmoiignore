@@ -4,6 +4,8 @@ admin_tasks.ps1
 install.ps1
 VSCode/
 .vscode/
+Documents/PowerShell/Profile/src/Profile/obj/
+Documents/PowerShell/Profile/src/Profile/bin/
 
 {{- if .work }}
 AppData/Roaming/apex-config/

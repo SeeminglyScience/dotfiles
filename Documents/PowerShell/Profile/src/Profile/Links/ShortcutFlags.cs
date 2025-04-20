@@ -1,0 +1,36 @@
+namespace Profile.Links;
+
+[Flags]
+public enum ShortcutFlags
+{
+    Default = 0x00000000,
+    HasIdList = 0x00000001,
+    HasLinkInfo = 0x00000002,
+    HasName = 0x00000004,
+    HasRelPath = 0x00000008,
+    HasWorkingDir = 0x00000010,
+    HasArgs = 0x00000020,
+    HasIconLocation = 0x00000040,
+    Unicode = 0x00000080,
+    ForceNoLinkInfo = 0x00000100,
+    HasExpSz = 0x00000200,
+    RunInSeparate = 0x00000400,
+    HasLogo3Id = 0x00000800,
+    HasDarwinId = 0x00001000,
+    RunAsUser = 0x00002000,
+    HasExpIconSz = 0x00004000,
+    NoPidlAlias = 0x00008000,
+    ForceUncName = 0x00010000,
+    RunWithShimLayer = 0x00020000,
+    ForceNoLinkTrack = 0x00040000,
+    EnableTargetMetadata = 0x00080000,
+    DisableLinkPathTracking = 0x00100000,
+    DisableKnownFolderRelativeTracking = 0x00200000,
+    NoKfAlias = 0x00400000,
+    AllowLinkToLink = 0x00800000,
+    UnaliasOnSave = 0x01000000,
+    PreferEnvironmentPath = 0x02000000,
+    KeepLocalIdlistForUncTarget = 0x04000000,
+    PersistVolumeIdRelative = 0x08000000,
+    Valid = 0x003FF7FF,
+}

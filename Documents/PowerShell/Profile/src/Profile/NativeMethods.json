@@ -1,0 +1,16 @@
+{
+  "$schema": "https://aka.ms/CsWin32.schema.json",
+  "emitSingleFile": true,
+  "public": false,
+  "useSafeHandles": false,
+  "className": "Interop",
+  "friendlyOverloads": {
+    "enabled": false
+  },
+  "comInterop": {
+    "preserveSigMethods": [
+      "*"
+    ]
+  },
+  "allowMarshaling": false
+}

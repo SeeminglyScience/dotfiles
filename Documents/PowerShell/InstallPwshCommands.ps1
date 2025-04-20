@@ -278,6 +278,10 @@ function Get-Pwsh {
             return GetAllVersions | SortPwshVersion
         }
 
+        if ($MajorAndMinor -notmatch '\.') {
+            $MajorAndMinor = "7.$MajorAndMinor"
+        }
+
         if (-not ($Preview -or $Rc -or $Build)) {
             if ($Latest) {
                 return Get-Pwsh -MajorAndMinor $MajorAndMinor | SortPwshVersion | Select-Object -First 1
@@ -486,6 +490,10 @@ function Find-Pwsh {
     end {
         $stop = @{ ErrorAction = [ActionPreference]::Stop }
         if ($PSCmdlet.ParameterSetName -eq 'Partial') {
+            if ($MajorAndMinor -and $MajorAndMinor -notmatch '\.') {
+                $MajorAndMinor = "7.$MajorAndMinor"
+            }
+
             if (-not $MajorAndMinor) {
                 if ($LatestStable) {
                     return gh api $apiBase/releases/latest 2> $null | ConvertFrom-Json | NewPwshVersionInfo
@@ -635,7 +643,7 @@ function Find-Pwsh {
 
 function Enter-Pwsh {
     [Alias('etp')]
-    [CmdletBinding(SupportsShouldProcess, PositionalBinding = $false, DefaultParameterSetName = 'Partial')]
+    [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'Partial')]
     param(
         [Parameter(Position = 0, ParameterSetName = 'Partial')]
         [ValidateNotNullOrEmpty()]
@@ -658,6 +666,10 @@ function Enter-Pwsh {
         [Parameter(ParameterSetName = 'Dev', Mandatory)]
         [switch] $Dev,
 
+        [Parameter(ParameterSetName = 'Stable', Mandatory)]
+        [Alias('s')]
+        [switch] $Stable,
+
         [Parameter(ParameterSetName = 'Tag', ValueFromPipelineByPropertyName)]
         [ValidateNotNullOrEmpty()]
         [SupportsWildcards()]
@@ -674,11 +686,16 @@ function Enter-Pwsh {
         [switch] $WinDesktop,
 
         [Parameter(ValueFromRemainingArguments)]
-        [string[]] $AdditionalArguments
+        [object[]] $AdditionalArguments
     )
     end {
         if ($PSCmdlet.ParameterSetName -eq 'Dev') {
             & { & "$env:PWSH_STORE\dev\pwsh.exe" @AdditionalArguments } | Out-Default
+            return
+        }
+
+        if ($PSCmdlet.ParameterSetName -eq 'Stable') {
+            & { & "$env:PWSH_STORE\stable\pwsh.exe" @AdditionalArguments } | Out-Default
             return
         }
 
@@ -747,6 +764,10 @@ function Install-Pwsh {
         }
 
         if ($PSCmdlet.ParameterSetName -eq 'Partial') {
+            if ($MajorAndMinor -notmatch '\.') {
+                $MajorAndMinor = "7.$MajorAndMinor"
+            }
+
             if ($MajorAndMinor -and -not ($Tag -or $Preview -or $Rc -or $Build)) {
                 try {
                     $foundVersions = Find-Pwsh -MajorAndMinor $MajorAndMinor -Latest @stop
