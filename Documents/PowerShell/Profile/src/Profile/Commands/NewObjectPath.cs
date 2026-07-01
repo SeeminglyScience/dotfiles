@@ -8,6 +8,7 @@ using System.Management.Automation;
 using System.Management.Automation.Language;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Profile.ObjectPaths;
 
 namespace Profile;
 
@@ -46,10 +47,18 @@ public sealed class ObjectPathCompleterAttribute : ArgumentCompleterFactoryAttri
         CommandAst commandAst,
         IDictionary fakeBoundParameters)
     {
+        ExpressionAst? memberExpr = IopMemberAccessRewriter.AsMemberAccess(commandAst);
+        if (memberExpr is null)
+        {
+            return [];
+        }
+
+        // Infer.MemberCompletions()
         StaticBindingResult binding = StaticParameterBinder.BindCommand(
             commandAst,
-            resolve: true,
-            [parameterName]);
+            resolve: true);
+            // this is broken I guess
+            // [parameterName]);
 
         if (!binding.BoundParameters.TryGetValue(parameterName, out ParameterBindingResult? parameter))
         {
@@ -75,7 +84,7 @@ public sealed class ObjectPathCompleterAttribute : ArgumentCompleterFactoryAttri
 
 public sealed class ObjectPath
 {
-    private readonly struct Entry
+    internal readonly struct Entry
     {
         public readonly Any<string, int> Value;
 
@@ -90,7 +99,7 @@ public sealed class ObjectPath
 
     private static readonly SearchValues<char> s_entryStart = SearchValues.Create('.', '[');
 
-    private readonly Entry[] _entries;
+    internal readonly Entry[] _entries;
 
     private ObjectPath(Entry[] entries)
     {
@@ -206,6 +215,7 @@ public sealed class ObjectPath
                 : value ?? "";
             (List<CompletionResult> completions, List<PSInferredMember> inferredMembers) = Infer.Members(
                 inferredTypes,
+                null,
                 memberName,
                 propertiesOnly: true,
                 completionsOnly: false);
@@ -229,11 +239,11 @@ public sealed class ObjectPath
         }
     }
 
-    private static IEnumerable<(Entry Entry, int Start, int End)> Parse(string path, bool throwOnIncomplete)
+    internal static IEnumerable<(Entry Entry, int Start, int End)> Parse(string path, bool throwOnIncomplete)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
 
-        if (path[0] is not '.' or '[')
+        if (path[0] is not '.' and not '[')
         {
             path = $".{path}";
         }

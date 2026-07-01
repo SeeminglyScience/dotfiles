@@ -39,4 +39,26 @@
             </ScriptProperty>
         </Members>
     </Type>
+    <Type>
+        <Name>GitFileStatus</Name>
+        <Members>
+            <ScriptMethod>
+                <Name>ToDisplayChar</Name>
+                <Script>
+                    switch ($this) {
+                        None { ' ' }
+                        Modified { 'M' }
+                        TypeChanged { 'T' }
+                        Added { 'A' }
+                        Deleted { 'D' }
+                        Renamed { 'R' }
+                        Copied { 'C' }
+                        Unmerged { 'U' }
+                        Untracked { '?' }
+                        Ignored { '!' }
+                    }
+                </Script>
+            </ScriptMethod>
+        </Members>
+    </Type>
 </Types>

@@ -9,6 +9,16 @@ namespace Profile;
 
 internal static class Format
 {
+    private static readonly CallSite<Func<CallSite, object?, object?, int, string>> s_enumStringCallSite =
+        CallSite<Func<CallSite, object?, object?, int, string>>.Create(new InvokeFormatBinder<string>("EnumString"));
+
+    public static string EnumString(object? value, int maxLength = -1) => s_enumStringCallSite.Target(s_enumStringCallSite, null, value, maxLength);
+
+    private static readonly CallSite<Func<CallSite, object?, bool, int, string>> s_fancyBoolCallSite =
+        CallSite<Func<CallSite, object?, bool, int, string>>.Create(new InvokeFormatBinder<string>("FancyBool"));
+
+    public static string FancyBool(bool value, int maxLength = -1) => s_fancyBoolCallSite.Target(s_fancyBoolCallSite, null, value, maxLength);
+
     private static readonly CallSite<Func<CallSite, object?, Type, int, string>> s_typeCallSite =
         CallSite<Func<CallSite, object?, Type, int, string>>.Create(new InvokeFormatBinder<string>("Type"));
 
@@ -21,6 +31,14 @@ internal static class Format
     private static readonly CallSite<Func<CallSite, object?, MemberInfo?, int, Type?, string>> s_memberCallSite =
         CallSite<Func<CallSite, object?, MemberInfo?, int, Type?, string>>.Create(new InvokeFormatBinder<string>("Member"));
     public static string Member(MemberInfo? value, int maxLength = -1, Type? targetType = null) => s_memberCallSite.Target(s_memberCallSite, null, value, maxLength, targetType);
+
+    private static readonly CallSite<Func<CallSite, object?, string, int, string>> s_variableCallSite =
+        CallSite<Func<CallSite, object?, string, int, string>>.Create(new InvokeFormatBinder<string>("Variable"));
+    public static string Variable(string value, int maxLength = -1) => s_variableCallSite.Target(s_variableCallSite, null, value, maxLength);
+
+    private static readonly CallSite<Func<CallSite, object?, string, int, string>> s_stringCallSite =
+        CallSite<Func<CallSite, object?, string, int, string>>.Create(new InvokeFormatBinder<string>("String"));
+    public static string String(string value, int maxLength = -1) => s_stringCallSite.Target(s_stringCallSite, null, value, maxLength);
 }
 
 internal class InvokeFormatBinder<T> : DynamicMetaObjectBinder

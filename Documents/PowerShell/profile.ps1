@@ -45,6 +45,7 @@ $alias:fires     = 'Find-PSResource'
 $alias:se        = 'Search-Everything'
 $alias:spp       = 'Split-Path'
 $alias:jp        = 'Join-Path'
+$alias:hr        = 'Get-HResultInfo'
 
 # Aliases from Utility.psm1
 # number       = ConvertTo-Number
@@ -188,7 +189,7 @@ $PSDefaultParameterValues['Find-Type:ResolutionMap'] = $PSDefaultParameterValues
         & $PSScriptRoot\CompletionExtensions.ps1
         # & $PSScriptRoot\LinqETS.ps1
 
-        $mostRecent = Get-ChildItem -File -LiteralPath $PSScriptRoot/Profile/src/Profile -Include *.cs, *.csproj |
+        $mostRecent = Get-ChildItem -Recurse -File -LiteralPath $PSScriptRoot/Profile/src/Profile -Include *.cs, *.csproj |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1 |
             Select-Object -ExpandProperty LastWriteTime
@@ -222,6 +223,8 @@ $PSDefaultParameterValues['Find-Type:ResolutionMap'] = $PSDefaultParameterValues
             $loadedAssembly = [System.Runtime.Loader.AssemblyLoadContext]::Default.LoadFromStream(
                 $peStream,
                 $pdbStream)
+
+            [Profile.ProfileInfo]::ProfileBase = $PSScriptRoot
 
             Import-Module -Global -Assembly $loadedAssembly
 

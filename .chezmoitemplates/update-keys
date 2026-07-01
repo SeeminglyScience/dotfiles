@@ -1,0 +1,36 @@
+{{- $source := get . "Source" -}}
+{{- $dest := get . "Destination" -}}
+{{- $id := get . "IdKey" -}}
+{{- $list := list -}}
+{{- $purgeNonDefault := default false (get . "PurgeNonDefault") -}}
+{{- $excludeMissingDefaults := default false (get . "ExcludeMissingDefaults") -}}
+{{- range $destItem := $dest -}}
+{{-     $found := false -}}
+{{-     range $srcItem := $source -}}
+{{-         if ne (get $srcItem $id) (get $destItem $id) -}}
+{{-             continue -}}
+{{-         end -}}
+{{-         $found = true -}}
+{{-         $list = append $list $srcItem -}}
+{{-         break -}}
+{{-     end -}}
+{{-     if and (not $found) (not $purgeNonDefault) -}}
+{{-         $list = append $list $destItem -}}
+{{-     end -}}
+{{- end -}}
+{{- if not $excludeMissingDefaults -}}
+{{-     range $srcItem := $source -}}
+{{-         $found := false -}}
+{{-         range $destItem := $dest -}}
+{{-             if ne (get $srcItem $id) (get $destItem $id) -}}
+{{-                 continue -}}
+{{-             end -}}
+{{-             $found = true -}}
+{{-             break -}}
+{{-         end -}}
+{{-         if not $found -}}
+{{-             $list = append $list $srcItem -}}
+{{-         end -}}
+{{-     end -}}
+{{- end -}}
+{{- $_ := set . "Result" $list -}}

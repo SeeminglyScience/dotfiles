@@ -1,0 +1,3 @@
+// chezmoi:modify-template
+// chezmoi:template:left-delimiter=//{{
+//{{- output "AssertConfigured" "chezmoi" .chezmoi.sourceFile -}}

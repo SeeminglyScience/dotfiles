@@ -5,6 +5,20 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": ".NET Core Launch (console)",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/UpdateJson/bin/Debug/net9.0/win-x64/publish/UpdateJson.exe",
+            "args": [
+                "C:/Users/pmeinecke/.local/share/chezmoi",
+                "C:/Users/pmeinecke",
+                "scoop/persist/flow-launcher/UserData/Settings/modify_Settings.json"
+            ],
+            "cwd": "${workspaceFolder}",
+            "stopAtEntry": false,
+            "console": "internalConsole"
+        },
+        {
             "name": ".NET Core Attach",
             "type": "coreclr",
             "request": "attach",

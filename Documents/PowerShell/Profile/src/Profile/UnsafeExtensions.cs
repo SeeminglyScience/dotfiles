@@ -4,6 +4,7 @@ using System.Management.Automation;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Xml.Linq;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.Com;
@@ -160,72 +161,104 @@ internal static unsafe class VariantOps
 
 internal static unsafe class UnsafeExtensions
 {
-    [SupportedOSPlatform("windows6.0.6000")]
-    public static Dictionary<string, object?> DumpProperties(this ref IPropertyStore props)
+    extension(ref IPropertyStore props)
     {
-        uint count = 0;
-        props.GetCount(&count).AssertSuccess();
-
-        Dictionary<string, object?> results = new((int)count);
-        for (uint i = 0; i < count; i++)
+        [SupportedOSPlatform("windows6.0.6000")]
+        public Dictionary<string, object?> DumpProperties()
         {
-            PROPERTYKEY key = default;
-            IPropertyDescription* desc = null;
-            PWSTR canonicalName = default;
+            uint count = 0;
+            props.GetCount(&count).AssertSuccess();
 
-            try
+            Dictionary<string, object?> results = new((int)count);
+            for (uint i = 0; i < count; i++)
             {
-                props.GetAt(i, &key).AssertSuccess();
-                HRESULT hr = Interop.PSGetPropertyDescription(
-                    &key,
-                    To.Ref(in IPropertyDescription.IID_Guid).ToPointer(),
-                    (void**)&desc);
+                PROPERTYKEY key = default;
+                IPropertyDescription* desc = null;
+                PWSTR canonicalName = default;
 
-                string? name = null;
-                if (hr.Succeeded)
+                try
                 {
-                    desc->GetCanonicalName(&canonicalName).AssertSuccess();
-                    name = canonicalName.ToString();
-                }
-                else
-                {
-                    name = $"{key.pid},{key.fmtid}";
-                }
+                    props.GetAt(i, &key).AssertSuccess();
+                    HRESULT hr = Interop.PSGetPropertyDescription(
+                        &key,
+                        To.Ref(in IPropertyDescription.IID_Guid).ToPointer(),
+                        (void**)&desc);
 
-                PROPVARIANT propVariant = default;
-                props.GetValue(&key, &propVariant).AssertSuccess();
-                results.Add(name, VariantOps.GetObject(ref propVariant));
+                    string? name = null;
+                    if (hr.Succeeded)
+                    {
+                        desc->GetCanonicalName(&canonicalName).AssertSuccess();
+                        name = canonicalName.ToString();
+                    }
+                    else
+                    {
+                        name = $"{key.pid},{key.fmtid}";
+                    }
+
+                    PROPVARIANT propVariant = default;
+                    props.GetValue(&key, &propVariant).AssertSuccess();
+                    results.Add(name, VariantOps.GetObject(ref propVariant));
+                }
+                finally
+                {
+                    if (canonicalName.Value is not null)
+                    {
+                        Marshal.FreeCoTaskMem((nint)canonicalName.Value);
+                    }
+
+                    if (desc is not null)
+                    {
+                        desc->Release();
+                    }
+                }
             }
-            finally
-            {
-                if (canonicalName.Value is not null)
-                {
-                    Marshal.FreeCoTaskMem((nint)canonicalName.Value);
-                }
 
-                if (desc is not null)
-                {
-                    desc->Release();
-                }
-            }
+            return results;
+        }
+    }
+
+    extension<T>(ref T self) where T : unmanaged
+    {
+        public T* ToPointer()
+        {
+            return (T*)Unsafe.AsPointer(ref self);
         }
 
-        return results;
+        public ref T ToRef()
+        {
+            return ref self;
+        }
+
+        public Castable<T> Cast()
+        {
+            return new Castable<T>(ref self);
+        }
+
+        public IUnknown* ToUnknown()
+        {
+            return (IUnknown*)self.ToPointer();
+        }
     }
 
-    public static T* ToPointer<T>(this ref T self) where T : unmanaged
+    extension<TComInterface>(ref IUnknown punk) where TComInterface : unmanaged, IComIID
     {
-        return (T*)Unsafe.AsPointer(ref self);
-    }
+        public TComInterface* GetInterface()
+        {
+            TComInterface* pp = null;
+            HRESULT hr = punk.QueryInterface(
+                To.Ref(in TComInterface.Guid).ToPointer(),
+                (void**)&pp);
 
-    public static ref T ToRef<T>(this ref T self) where T : unmanaged
-    {
-        return ref self;
-    }
+            if (hr.Succeeded)
+            {
+                return pp;
+            }
 
-    public static Castable<T> Cast<T>(this ref T self) where T : unmanaged
-    {
-        return new Castable<T>(ref self);
+            Exception innerException = Marshal.GetExceptionForHR(hr.Value) ?? new Win32Exception(hr.Value);
+            throw new InvalidOperationException(
+                $"Could not acquire interface '{typeof(TComInterface).FullName}' due to message: {innerException.Message}",
+                innerException);
+        }
     }
 
     public static bool QueryInterface<TComInterface, TVTable>(void* punk, out TComInterface* result)
@@ -242,86 +275,71 @@ internal static unsafe class UnsafeExtensions
         }
     }
 
-    public static IUnknown* ToUnknown<T>(this ref T self) where T : unmanaged
+    extension(HRESULT hr)
     {
-        return (IUnknown*)self.ToPointer();
-    }
-
-    public static TComInterface* GetInterface<TComInterface>(this ref IUnknown punk)
-        where TComInterface : unmanaged, IComIID
-    {
-        TComInterface* pp = null;
-        HRESULT hr = punk.QueryInterface(
-            To.Ref(in TComInterface.Guid).ToPointer(),
-            (void**)&pp);
-
-        if (hr.Succeeded)
+        public void AssertSuccess([CallerArgumentExpression(nameof(hr))] string expression = "")
         {
-            return pp;
-        }
-
-        Exception innerException = Marshal.GetExceptionForHR(hr.Value) ?? new Win32Exception(hr.Value);
-        throw new InvalidOperationException(
-            $"Could not acquire interface '{typeof(TComInterface).FullName}' due to message: {innerException.Message}",
-            innerException);
-    }
-
-    public static void AssertSuccess(this HRESULT hr, [CallerArgumentExpression(nameof(hr))] string expression = "")
-    {
-        if (hr.Succeeded)
-        {
-            return;
-        }
-
-        IErrorInfo* errorInfo = null;
-        try
-        {
-            if (!Interop.GetErrorInfo(0, &errorInfo).Succeeded)
+            if (hr.Succeeded)
             {
-                errorInfo = null;
+                return;
             }
 
-            throw ComException.Create(expression, hr, errorInfo);
-        }
-        finally
-        {
-            if (errorInfo is not null)
+            IErrorInfo* errorInfo = null;
+            try
             {
-                errorInfo->Release();
+                if (!Interop.GetErrorInfo(0, &errorInfo).Succeeded)
+                {
+                    errorInfo = null;
+                }
+
+                throw ComException.Create(expression, hr, errorInfo);
             }
+            finally
+            {
+                if (errorInfo is not null)
+                {
+                    errorInfo->Release();
+                }
+            }
+
+
+            // if (expression is "")
+            // {
+            //     Marshal.ThrowExceptionForHR(hr.Value);
+            //     return;
+            // }
+
+            // throw new InvalidOperationException(
+            //     $"Expression '{expression}' failed with exit code 0x{hr.Value.ToString("X8")}.");
         }
-
-
-        // if (expression is "")
-        // {
-        //     Marshal.ThrowExceptionForHR(hr.Value);
-        //     return;
-        // }
-
-        // throw new InvalidOperationException(
-        //     $"Expression '{expression}' failed with exit code 0x{hr.Value.ToString("X8")}.");
     }
 
-    public static Span<char> SliceToNull(this Span<char> value)
+    extension(Span<char> value)
     {
-        int index = value.IndexOf('\0');
-        if (index is -1)
+        public Span<char> SliceToNull()
         {
-            return value;
-        }
+            int index = value.IndexOf('\0');
+            if (index is -1)
+            {
+                return value;
+            }
 
-        return value[..index];
+            return value[..index];
+        }
     }
 
-    public static ReadOnlySpan<char> SliceToNull(this ReadOnlySpan<char> value)
+    extension(ReadOnlySpan<char> value)
     {
-        int index = value.IndexOf('\0');
-        if (index is -1)
+        public ReadOnlySpan<char> SliceToNull()
         {
-            return value;
-        }
+            int index = value.IndexOf('\0');
+            if (index is -1)
+            {
+                return value;
+            }
 
-        return value[..index];
+            return value[..index];
+        }
     }
 }
 

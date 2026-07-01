@@ -8,6 +8,7 @@
     <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
     <LangVersion>preview</LangVersion>
     <EnablePreviewFeatures>true</EnablePreviewFeatures>
+    <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,10 +18,12 @@
     </PackageReference>
     <PackageReference Include="PSValueWildcard" Version="1.0.0-alpha1" />
     <PackageReference Include="System.Management.Automation" Version="7.4.4" PrivateAssets="all" />
+    <ProjectReference Include="..\ComGenerator\ComGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <ItemGroup>
     <AdditionalFiles Include="NativeMethods.txt" />
+    <Compile Remove="$(CompilerGeneratedFilesOutputPath)/**/*.cs" />
   </ItemGroup>
 
 </Project>

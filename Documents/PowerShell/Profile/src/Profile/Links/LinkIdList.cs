@@ -57,6 +57,29 @@ public unsafe sealed class LinkIdList : IDisposable
     public List<byte[]> UnsafeGetItemIdListBytes()
     {
         List<byte[]> items = [];
+        ITEMIDLIST* current = _list;
+        while (true)
+        {
+            int count = current->mkid.cb;
+            if (count is <= 0)
+            {
+                return items;
+            }
+
+            byte[] bytes = new byte[count];
+            for (int i = 0; i < count; i++)
+            {
+                bytes[i] = current->mkid.abID[i];
+            }
+
+            items.Add(bytes);
+            current = (ITEMIDLIST*)(((byte*)current) + SHITEMID.SizeOf(count));
+        }
+    }
+
+    public List<byte[]> UnsafeGetItemIdListBytes2()
+    {
+        List<byte[]> items = [];
         byte* p = (byte*)_list;
         while (true)
         {

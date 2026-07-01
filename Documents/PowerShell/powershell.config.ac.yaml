@@ -1,0 +1,13 @@
+  "Microsoft.PowerShell:ExecutionPolicy": RemoteSigned
+  WindowsPowerShellCompatibilityModuleDenyList:
+    - PSScheduledJob
+    - BestPractices
+    - UpdateServices
+  ExperimentalFeatures:
+    - PSFeedbackProvider
+    - PSLoadAssemblyFromNativeCode
+    - PSNativeWindowsTildeExpansion
+    - PSProfileDSCResource
+    - PSSerializeJSONLongEnumAsNumber
+    - PSRedirectToVariable
+    - PSSubsystemPluginModel

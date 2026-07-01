@@ -3,7 +3,6 @@ using System.Linq.Expressions;
 using System.Management.Automation;
 using System.Management.Automation.Internal;
 using System.Reflection;
-using System.Reflection.Metadata;
 
 namespace Profile;
 
@@ -11,11 +10,21 @@ public sealed class PooledConverter : PSTypeConverter
 {
     public override bool CanConvertFrom(object sourceValue, Type destinationType)
     {
+        if (sourceValue is PSObject pso)
+        {
+            sourceValue = pso.BaseObject;
+        }
+
         return sourceValue is pooled && destinationType.IsSubclassOf(typeof(Delegate));
     }
 
     public override bool CanConvertTo(object sourceValue, Type destinationType)
     {
+        if (sourceValue is PSObject pso)
+        {
+            sourceValue = pso.BaseObject;
+        }
+
         return sourceValue is pooled && destinationType.IsSubclassOf(typeof(Delegate));
     }
 
@@ -25,15 +34,27 @@ public sealed class PooledConverter : PSTypeConverter
         IFormatProvider formatProvider,
         bool ignoreCase)
     {
-        return CreateDelegate(((pooled)sourceValue)._scriptBlock, destinationType);
+        if (sourceValue is PSObject pso)
+        {
+            sourceValue = pso.BaseObject;
+        }
+
+        pooled pooledValue = (pooled)sourceValue;
+        return CreateDelegate(pooledValue._scriptBlock, destinationType, pooledValue._dollarThis);
     }
 
     public override object ConvertTo(object sourceValue, Type destinationType, IFormatProvider formatProvider, bool ignoreCase)
     {
-        return CreateDelegate(((pooled)sourceValue)._scriptBlock, destinationType);
+        if (sourceValue is PSObject pso)
+        {
+            sourceValue = pso.BaseObject;
+        }
+
+        pooled pooledValue = (pooled)sourceValue;
+        return CreateDelegate(pooledValue._scriptBlock, destinationType, pooledValue._dollarThis);
     }
 
-    private Delegate CreateDelegate(ScriptBlock scriptBlock, Type delegateType)
+    private Delegate CreateDelegate(ScriptBlock scriptBlock, Type delegateType, object? dollarThis = null)
     {
         MethodInfo? invokeMethod = delegateType.GetMethod("Invoke");
         Debug.Assert(invokeMethod is not null);
@@ -63,7 +84,7 @@ public sealed class PooledConverter : PSTypeConverter
                 Expression.Constant(ReflectionCache.ScriptBlock.Clone(scriptBlock)),
                 Expression.Constant(PooledRunspaces.Instance),
                 paramsAsArgs.Length is not 0 ? paramsAsArgs[0] : autoNull,
-                autoNull,
+                dollarThis is null ? autoNull : Expression.Constant(dollarThis, typeof(object)),
                 Expression.NewArrayInit(typeof(object), paramsAsArgs)
             ]);
 

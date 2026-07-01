@@ -1,0 +1,9 @@
+{{- $source := get . "Source" -}}
+{{- $dest := get . "Destination" -}}
+{{- $keysToIgnore := get . "KeysToIgnore" -}}
+{{- range $key, $value := $source -}}
+{{-     if has $key $keysToIgnore -}}
+{{-         continue -}}
+{{-     end -}}
+{{-     $_ := set $dest $key $value -}}
+{{- end -}}

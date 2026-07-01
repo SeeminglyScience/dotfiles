@@ -29,3 +29,7 @@ SHGetDataFromIDListW
 SHGetPropertyStoreFromIDList
 GetErrorInfo
 IErrorInfo
+GetPrinterW
+DEVMODEW
+CfGetSyncRootInfoByPath
+CF_SYNC_ROOT_STANDARD_INFO

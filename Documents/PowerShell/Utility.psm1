@@ -2867,6 +2867,16 @@ function ConvertTo-Number {
                 continue
             }
 
+            if ($currentItem -is [string]) {
+                <# yield #> ConvertTo-Number $currentItem.ToCharArray()
+                continue
+            }
+
+            if ($currentItem -is [char]) {
+                <# yield #> [uint16]$currentItem
+                continue
+            }
+
             if ($currentItem -is [Enum]) {
                 <# yield #> $currentItem.value__
                 continue
@@ -2933,6 +2943,7 @@ function ConvertTo-HexString {
         foreach ($currentItem in $InputObject) {
             $numeric = number $currentItem
 
+            # if ($numeric -is )
             if ($PSBoundParameters.ContainsKey((nameof{$Padding}))) {
                 "0x{0:X$Padding}" -f $numeric
                 continue
@@ -5108,16 +5119,51 @@ Continue?",
 
 function Push-WithSetOrigin {
     [Alias('gpush')]
-    [CmdletBinding()]
-    param()
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter()]
+        [string] $Remote = 'origin',
+
+        [Parameter()]
+        [Alias('gd')]
+        [string] $GitDirectory
+    )
+    begin {
+        function ShouldProc($context, $message) {
+            return $context.ShouldProcess($message, $message, 'Confirm')
+        }
+
+        if (-not $GitDirectory) {
+            $GitDirectory = git rev-parse --show-toplevel 2> variable:gitErr
+            if ($LASTEXITCODE) {
+                throw $gitErr
+            }
+        }
+    }
     end {
-        $existingOrigin = git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2> $null
-        if ($existingOrigin) {
-            git push
+        $existingOrigin = git -C $GitDirectory rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2> $null
+        $currentBranch = git -C $GitDirectory branch --show-current
+        if ($currentBranch -in 'master', 'main') {
+            throw 'mmm if you really want to push master, do it manually'
+        }
+
+        if ($existingOrigin -and $existingOrigin.EndsWith($currentBranch)) {
+            if (ShouldProc $PSCmdlet 'git push') {
+                git -C $GitDirectory push
+            }
+
             return
         }
 
-        git push -u origin (git branch --show-current)
+        if ($existingOrigin -and -not ($existingOrigin.EndsWith('/master') -or $exitingOrigin.EndsWith('/main'))) {
+            if (-not $PSCmdlet.ShouldContinue("Branch ($currentBranch) has an existing non-main remote ($existingOrigin)")) {
+                return
+            }
+        }
+
+        if (ShouldProc $PSCmdlet "git push -u $remote '$currentBranch'") {
+            git -C $GitDirectory push -u $remote $currentBranch
+        }
     }
 }
 
@@ -5186,9 +5232,8 @@ $script:LocationAliases = @{
 
 $script:Never = [datetime]::new(0)
 
-
 $LocationAliasCache = @{
-    LastUpdateTime = [datetime]::new(0)
+    LastUpdateTime = $script:Never
     Aliases = @{}
 }
 
@@ -5948,6 +5993,14 @@ function Get-CommandParameter {
 
                 foreach ($target in $targetParameters) {
                     if ($target.IsMatch($param.Name)) {
+                        $attributes = foreach ($attrib in $param.Attributes) {
+                            if ($attrib.GetType().Name -eq 'ArgumentTypeConverterAttribute') {
+                                continue
+                            }
+
+                            $attrib
+                        }
+
                         $result = [PSCustomObject]@{
                             PSTypeName = 'Utility.CommandParameterInfo'
                             Set = $set.Name
@@ -5960,7 +6013,7 @@ function Get-CommandParameter {
                             ValueFromRemainingArguments = $param.ValueFromRemainingArguments
                             Type = $param.ParameterType
                             Name = $param.Name
-                            Attributes = $param.Attributes
+                            Attributes = $attributes
                         }
 
                         $_set = [psnoteproperty]::new('_set', $set)

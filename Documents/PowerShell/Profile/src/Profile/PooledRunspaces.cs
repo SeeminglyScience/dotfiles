@@ -54,6 +54,7 @@ internal sealed class PooledRunspaces
         }
         finally
         {
+            Runspace.DefaultRunspace = previous;
             runspaces.Return(toReturn);
         }
     }

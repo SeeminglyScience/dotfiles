@@ -7,9 +7,17 @@ public sealed class pooled
 {
     internal readonly ScriptBlock _scriptBlock;
 
+    internal readonly object? _dollarThis;
+
     public pooled(ScriptBlock scriptBlock)
     {
         _scriptBlock = scriptBlock;
+    }
+
+    public pooled(ScriptBlock scriptBlock, object? dollarThis)
+    {
+        _scriptBlock = scriptBlock;
+        _dollarThis = dollarThis;
     }
 
     public override string ToString() => _scriptBlock.ToString();

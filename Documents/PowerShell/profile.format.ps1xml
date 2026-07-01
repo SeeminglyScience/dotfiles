@@ -22,6 +22,63 @@
     </SelectionSets>
     <ViewDefinitions>
         <View>
+            <Name>Profile.HResult</Name>
+            <ViewSelectedBy>
+                <TypeName>Profile.HResult</TypeName>
+            </ViewSelectedBy>
+            <CustomControl>
+                <CustomEntries>
+                    <CustomEntry>
+                        <CustomItem>
+                            <ExpressionBinding>
+                                <ScriptBlock>
+                                    $_.ToDisplayString()
+                                </ScriptBlock>
+                            </ExpressionBinding>
+                        </CustomItem>
+                    </CustomEntry>
+                </CustomEntries>
+            </CustomControl>
+        </View>
+        <View>
+            <Name>Profile.ErrorCodeInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>Profile.ErrorCodeInfo</TypeName>
+            </ViewSelectedBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Width>16</Width>
+                        <Label>Source</Label>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Width>26</Width>
+                        <Label>Name</Label>
+                    </TableColumnHeader>
+                    <TableColumnHeader />
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    [ClassExplorer.Internal._Format]::String($_.Source)
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    [ClassExplorer.Internal._Format]::Variable($_.Name)
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <PropertyName>Description</PropertyName>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
             <Name>System.Threading.Tasks.Task</Name>
             <ViewSelectedBy>
                 <TypeName>System.Threading.Tasks.Task</TypeName>
@@ -1033,6 +1090,87 @@
 
                                     $_.Machine.ToString() -replace '%[^%]+%', "$((Get-PSReadLineOption).VariableColor)`$0$($PSStyle.Reset)"
                                 </ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
+        <View>
+            <Name>GitStatusInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>GitStatusInfo</TypeName>
+            </ViewSelectedBy>
+            <GroupBy>
+                <ScriptBlock>$_.Branch.Head</ScriptBlock>
+                <CustomControl>
+                    <CustomEntries>
+                        <CustomEntry>
+                            <CustomItem>
+                                <Frame>
+                                    <CustomItem>
+                                        <Text>    Branch: </Text>
+                                        <ExpressionBinding>
+                                            <ScriptBlock>
+                                                if (-not $_.Branch.Upstream) {
+                                                    return $_.Branch.Head
+                                                }
+
+                                                return '{0} (+{1})' -f $_.Branch.Head, $_.Branch.Pending.Local
+                                            </ScriptBlock>
+                                        </ExpressionBinding>
+                                    </CustomItem>
+                                </Frame>
+                                <Frame>
+                                    <CustomItem>
+                                        <NewLine />
+                                        <Text>          : </Text>
+                                        <ExpressionBinding>
+                                            <ScriptBlock>
+                                                if (-not $_.Branch.Upstream) {
+                                                    return ''
+                                                }
+
+                                                return '{0} (-{1})' -f $_.Branch.Upstream, $_.Branch.Pending.Upstream
+                                            </ScriptBlock>
+                                        </ExpressionBinding>
+                                    </CustomItem>
+                                </Frame>
+                            </CustomItem>
+                        </CustomEntry>
+                    </CustomEntries>
+                </CustomControl>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Label>   </Label>
+                        <Width>3</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>S</Label>
+                        <Width>1</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>W</Label>
+                        <Width>1</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Path</Label>
+                    </TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem><ScriptBlock>' '</ScriptBlock></TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>$_.FormatFileStatus($true)</ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>$_.FormatFileStatus($false)</ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>$_.FormatPath()</ScriptBlock>
                             </TableColumnItem>
                         </TableColumnItems>
                     </TableRowEntry>

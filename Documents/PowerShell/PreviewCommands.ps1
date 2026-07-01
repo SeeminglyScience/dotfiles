@@ -5,17 +5,17 @@ using namespace System.Management.Automation.Language
 using namespace System.Reflection
 using namespace PowerShellRun
 
-function Get-AssemblyLoadContext {
-    [Alias('galc')]
-    [CmdletBinding()]
-    param(
-        [Parameter(ValueFromPipeline, ValueFromPipelineByPropertyName, Mandatory)]
-        [System.Reflection.Assembly] $Assembly
-    )
-    process {
-        [System.Runtime.Loader.AssemblyLoadContext]::GetLoadContext($Assembly)
-    }
-}
+# function Get-AssemblyLoadContext {
+#     [Alias('galc')]
+#     [CmdletBinding()]
+#     param(
+#         [Parameter(ValueFromPipeline, ValueFromPipelineByPropertyName, Mandatory)]
+#         [System.Reflection.Assembly] $Assembly
+#     )
+#     process {
+#         [System.Runtime.Loader.AssemblyLoadContext]::GetLoadContext($Assembly)
+#     }
+# }
 
 function New-PromptBox {
     param([string] $text)
@@ -2555,7 +2555,7 @@ function Invoke-PwshTriage {
                                 $this.LabelGroups['Workgroups']
                                 $this.LabelGroups['Issue']
                                 $this.LabelGroups['Resolution']
-                            } | Where-Object name -notin $this.WorkingList.Name |
+                            } | Where-Object { $_ } | Where-Object name -notin $this.WorkingList.Name |
                                 Invoke-PSRunSelector -MultiSelection -NameProperty name
 
                             foreach ($label in $labelsToAdd) {
@@ -2586,7 +2586,7 @@ function Invoke-PwshTriage {
                 $allLabels['WG-Language'],
                 $allLabels['WG-Remoting'],
                 $allLabels['WG-Security'],
-                $allLabels['Area-Maintainers-Build'],
+                $allLabels['WG-Maintainers-Build'],
                 $allLabels['Area-Maintainers-Documentation'])
             Issue = (
                 $allLabels['Issue-Bug'],
@@ -2641,7 +2641,53 @@ function Invoke-PwshTriage {
         $global:lastOptions = $options
 
         $loader = {
-            Find-Issue --repo 'PowerShell/PowerShell' -State Open --label 'Needs-Triage' | & { process {
+            $ghArgs = (
+                '--paginate',
+                '--method', 'GET',
+                '-H', 'Accept: application/vnd.github+json',
+                'repos/PowerShell/PowerShell/issues',
+                '-f', 'state=open',
+                '-f', 'labels=Needs-Triage')
+
+            # Find-Issue --repo 'PowerShell/PowerShell' --limit 9999 -State Open --label 'Needs-Triage' | & { process {
+            $PSNativeCommandArgumentPassing = 'Legacy'
+            gh api @ghArgs | ConvertFrom-Json | & { process {
+                [pscustomobject]@{
+                    PSTypeName = 'Utility.Issue'
+                    assignees = $PSItem.assignees
+                    author = [pscustomobject]@{
+                        id = $PSItem.user.node_id
+                        is_bot = $PSItem.user.type -eq 'Bot'
+                        login = $PSItem.user.login
+                        url = $PSItem.user.html_url
+                    }
+                    authorAssociation = $PSItem.author_association
+                    body = $PSItem.body
+                    closedAt = ($PSItem.closed_at)?.ToLocalTime() ?? (default([datetime]))
+                    commentsCount = $PSItem.comments
+                    createdAt = ($PSItem.closed_at)?.ToLocalTime() ?? (default([datetime]))
+                    id = $PSItem.node_id
+                    isLocked = $PSItem.locked
+                    isPullRequest = $null -ne $PSItem.psobject.Properties['pull_request']
+                    labels = $PSItem.labels | & { process {
+                        [pscustomobject]@{
+                            color = $PSItem.color
+                            description = $PSItem.description
+                            id = $PSItem.node_id
+                            name = $PSItem.name
+                        }
+                    }}
+                    number = $PSItem.number
+                    repository = [pscustomobject]@{
+                        name = 'PowerShell'
+                        nameWithOwner = 'PowerShell/PowerShell'
+                    }
+                    state = $PSItem.state
+                    title = $PSItem.title
+                    updatedAt = ($PSItem.updatedAt)?.ToLocalTime() ?? (default([datetime]))
+                    url = $PSItem.html_url
+                }
+            }} | & { process {
 
                 $dontInclude = $dontInclude
                 foreach ($name in $_.labels.name) {
@@ -2924,5 +2970,825 @@ function Find-Header {
                 $pso
             }
         }
+    }
+}
+
+function Format-Json {
+    [CmdletBinding(PositionalBinding = $false)]
+    [Alias('fjson')]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject,
+
+        [Parameter()]
+        [Alias('d')]
+        [int] $Depth = 99,
+
+        [Parameter(ValueFromRemainingArguments)]
+        [string[]] $JqArgumentList
+    )
+    clean {
+        ($pipe)?.Clean()
+    }
+    begin {
+        $pipe = $null
+    }
+    process {
+        if ($null -eq $pipe) {
+            if ($JqArgumentList) {
+                if ($InputObject -is [string]) {
+                    $pipe = { jq --color-output --ascii-output @JqArgumentList | Out-Bat }.
+                        GetSteppablePipeline($MyInvocation.CommandOrigin)
+                } else {
+                    $pipe = { ConvertTo-Json -Depth $Depth | jq --color-output --ascii-output @JqArgumentList | Out-Bat }.
+                        GetSteppablePipeline($MyInvocation.CommandOrigin)
+                }
+
+            } else {
+                if ($InputObject -is [string]) {
+                    $pipe = { jq --color-output --ascii-output | Out-Bat }.
+                        GetSteppablePipeline($MyInvocation.CommandOrigin)
+                } else {
+                    $pipe = { ConvertTo-Json -Depth $Depth | jq --color-output --ascii-output | Out-Bat }.
+                        GetSteppablePipeline($MyInvocation.CommandOrigin)
+                }
+            }
+
+            $pipe.Begin($PSCmdlet)
+        }
+
+        $pipe.Process($PSItem)
+    }
+    end {
+        $pipe.End()
+    }
+}
+
+function Select-Json {
+    [CmdletBinding(PositionalBinding = $false)]
+    [Alias('json')]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [psobject] $InputObject,
+
+        [Parameter()]
+        [Alias('d')]
+        [int] $Depth = 99,
+
+        [Parameter(ValueFromRemainingArguments)]
+        [string[]] $JqArgumentList
+    )
+    clean {
+        ($pipe)?.Clean()
+    }
+    begin {
+        $pipe = $null
+    }
+    process {
+        if ($null -eq $pipe) {
+            if ($JqArgumentList) {
+                if ($InputObject -is [string]) {
+                    $pipe = { jq @JqArgumentList }.
+                        GetSteppablePipeline($MyInvocation.CommandOrigin)
+                } else {
+                    $pipe = { ConvertTo-Json -Depth $Depth | jq @JqArgumentList }.
+                        GetSteppablePipeline($MyInvocation.CommandOrigin)
+                }
+            } else {
+                if ($InputObject -is [string]) {
+                    $pipe = { jq }.
+                        GetSteppablePipeline($MyInvocation.CommandOrigin)
+                } else {
+                    $pipe = { ConvertTo-Json -Depth $Depth | jq }.
+                        GetSteppablePipeline($MyInvocation.CommandOrigin)
+                }
+            }
+
+            $pipe.Begin($PSCmdlet)
+        }
+
+        $pipe.Process($PSItem)
+    }
+    end {
+        $pipe.End()
+    }
+}
+
+class GitBranchPendingChanges {
+    [int] $Local
+    [int] $Upstream
+}
+class GitBranchStatusInfo {
+    [string] $Oid
+    [string] $Head
+    [string] $Upstream
+    [GitBranchPendingChanges] $Pending = [GitBranchPendingChanges]::new()
+}
+
+enum GitFileStatus {
+    None
+    Unmerged
+    Modified
+    Deleted
+    Renamed
+    Copied
+    Added
+    TypeChanged
+    Untracked
+    Ignored
+}
+
+class GitCopyRenameInfo {
+    [bool] $IsCopy
+    [bool] $IsRename
+    [int] $Score
+    [string] $OriginalPath
+}
+
+class GitStatusInfo {
+    [GitBranchStatusInfo] $Branch
+    [GitFileStatus] $Index
+    [GitFileStatus] $Worktree
+    [int] $FileModeHead
+    [int] $FileModeIndex
+    [int] $FileModeWorktree
+    [string] $ObjectNameHead
+    [string] $ObjectNameIndex
+    [string] $Path
+    [string] $PSPath
+    [GitCopyRenameInfo] $CopyRenameInfo
+    [bool] $IsEmpty
+
+    GitStatusInfo(
+        [GitBranchStatusInfo] $branch,
+        [GitFileStatus] $index,
+        [GitFileStatus] $worktree,
+        [int] $fileModeHead,
+        [int] $fileModeIndex,
+        [int] $fileModeWorktree,
+        [string] $ObjectNameHead,
+        [string] $objectNameIndex,
+        [string] $path,
+        [string] $gitBase)
+    {
+        $this.Branch = $branch
+        $this.Index = $index
+        $this.Worktree = $worktree
+        $this.FileModeHead = $fileModeHead
+        $this.FileModeIndex = $fileModeIndex
+        $this.FileModeWorktree = $fileModeWorktree
+        $this.ObjectNameHead = $objectNameHead
+        $this.ObjectNameIndex = $objectNameIndex
+        $this.Path = $path
+        $this.PSPath = "FileSystem::$(Join-Path $gitBase $path)"
+    }
+
+    static [GitStatusInfo] Empty([GitBranchStatusInfo] $branchInfo, [string] $gitRepo) {
+        $gsi = [GitStatusInfo]::new(
+            $branchInfo,
+            [GitFileStatus]::None,
+            [GitFileStatus]::None,
+            0, 0, 0, '', '', '', $gitRepo)
+
+        $gsi.IsEmpty = $true
+        return $gsi
+    }
+
+    [string] FormatFileStatus([bool] $index) {
+        $color = $global:PSStyle.Foreground.Red
+        $status = $this.Worktree
+        if ($index) {
+            $color = $global:PSStyle.Foreground.Green
+            $status = $this.Index
+        }
+
+        if ($status -eq [GitFileStatus]::None) {
+            return ' '
+        }
+
+        return '{0}{1}{2}' -f $color, $status.ToDisplayChar(), $global:PSStyle.Reset
+    }
+
+    [string] FormatPath() {
+        if ($this.IsEmpty) {
+            return 'No changes'
+        }
+
+        $color = $global:PSStyle.Foreground.Red
+        $isStaged = $this.Index -ne [GitFileStatus]::None
+        $hasUnstaged = $this.Worktree -ne [GitFileStatus]::None
+        $suffix = $global:PSStyle.Reset
+        if ($isStaged) {
+            $color = $global:PSStyle.Foreground.Green
+            if ($hasUnstaged) {
+                $suffix = '{0}**{1}' -f $global:PSStyle.Foreground.Red, $global:PSStyle.Reset
+            }
+        }
+
+        return '{0}{1}{2}' -f $color, $this.Path, $suffix
+    }
+}
+
+$StatusMap = [Dictionary[char, GitFileStatus]]::new()
+$StatusMap['.'] = [GitFileStatus]::None
+$StatusMap['M'] = [GitFileStatus]::Modified
+$StatusMap['T'] = [GitFileStatus]::TypeChanged
+$StatusMap['A'] = [GitFileStatus]::Added
+$StatusMap['D'] = [GitFileStatus]::Deleted
+$StatusMap['R'] = [GitFileStatus]::Renamed
+$StatusMap['C'] = [GitFileStatus]::Copied
+$StatusMap['U'] = [GitFileStatus]::Unmerged
+$StatusMap['?'] = [GitFileStatus]::Untracked
+$StatusMap['!'] = [GitFileStatus]::Ignored
+
+function Get-GitStatus {
+    [CmdletBinding(PositionalBinding = $false)]
+    [Alias('gst')]
+    param(
+        [Parameter()]
+        [Alias('gd')]
+        [string] $GitDirectory,
+
+        [Parameter(Position = 0)]
+        [SupportsWildcards()]
+        [string] $Name,
+
+        [Parameter()]
+        [Alias('s')]
+        [switch] $Staged,
+
+        [Parameter()]
+        [Alias('d')]
+        [switch] $Dirty,
+
+        [Parameter()]
+        [Alias('wt')]
+        [GitFileStatus[]] $WorktreeStatus,
+
+        [Parameter()]
+        [Alias('i')]
+        [GitFileStatus[]] $IndexStatus
+    )
+    begin {
+        function GetStatusItemsImpl {
+            param(
+                [Parameter()]
+                [string] $GitDirectory
+            )
+            end {
+                $statusMap = $script:StatusMap
+                $output = git -C $GitDirectory status --porcelain=v2 --branch 2> variable:gitErr
+                if ($LASTEXITCODE) {
+                    throw $gitErr
+                }
+
+                $branchInfo = [GitBranchStatusInfo]::new()
+
+                $i = 0
+                if ($output[$i++] -match '# branch.oid (.+)') {
+                    $branchInfo.Oid = $matches[1]
+                }
+
+                if ($output[$i++] -match '# branch.head (.+)') {
+                    $branchInfo.Head = $matches[1]
+                }
+
+                if ($output[$i++] -match '# branch.upstream (.+)') {
+                    $branchInfo.Upstream = $matches[1]
+                } else {
+                    $i--
+                }
+
+                if ($output[$i++] -match '# branch.ab \+(\d+) -(\d+)') {
+                    $branchInfo.Pending.Local = [int]$matches[1]
+                    $branchInfo.Pending.Upstream = [int]$matches[2]
+                } else {
+                    $i--
+                }
+
+                if (-not $GitDirectory) {
+                    $GitDirectory = git rev-parse --show-toplevel
+                }
+
+                if ($i -ge $output.Length) {
+                    return [GitStatusInfo]::Empty($branchInfo, $GitDirectory)
+                }
+
+                $changed = '1'[0]
+                $renamed = '2'[0]
+                $untracked = '?'[0]
+                for (; $i -lt $output.Length; $i++) {
+                    $c = $output[$i][0]
+                    if ($c.Equals($changed)) {
+                        $elements = $output[$i] -split ' ', 9
+                        $xy = $elements[1]
+                        $indexStatus = $statusMap[$xy[0]]
+                        $headStatus = $statusMap[$xy[1]]
+                        [GitStatusInfo]::new(
+                            $branchInfo,
+                            $indexStatus,
+                            $headStatus,
+                            $elements[3],
+                            $elements[4],
+                            $elements[5],
+                            $elements[6],
+                            $elements[7],
+                            $elements[8],
+                            $GitDirectory)
+
+                        continue
+                    }
+
+                    if ($c.Equals($renamed)) {
+                        $elements = $output[$i] -split ' ', 10
+                        $xy = $elements[1]
+                        $indexStatus = $statusMap[$xy[0]]
+                        $headStatus = $statusMap[$xy[1]]
+                        $type = $elements[8][0]
+                        $cri = [GitCopyRenameInfo]::new()
+                        if ($type.Equals('C'[0])) {
+                            $cri.IsCopy = $true
+                        } else {
+                            $cri.IsRename = $true
+                        }
+
+                        $cri.Score = $elements[8].Substring(1)
+                        $path, $cri.OriginalPath = $elements[9] -split '\t'
+                        $gsi = [GitStatusInfo]::new(
+                            $branchInfo,
+                            $indexStatus,
+                            $headStatus,
+                            $elements[3],
+                            $elements[4],
+                            $elements[5],
+                            $elements[6],
+                            $elements[7],
+                            $path,
+                            $GitDirectory)
+
+                        $gsi.CopyRenameInfo = $cri
+                        $gsi
+                        continue
+                    }
+
+                    if ($c.Equals($untracked)) {
+                        $null, $path = $output[$i] -split ' ', 2
+                        [GitStatusInfo]::new(
+                            $branchInfo,
+                            [GitFileStatus]::None,
+                            [GitFileStatus]::Untracked,
+                            0,
+                            0,
+                            0,
+                            '',
+                            '',
+                            $path,
+                            $GitDirectory)
+
+                        continue
+                    }
+
+                    throw
+                }
+            }
+        }
+    }
+    end {
+        GetStatusItemsImpl | & { process {
+            if ($Name -and ($_.IsEmpty -or $_.Path -notlike $Name)) {
+                return
+            }
+
+            if ($Staged -and ($_.IsEmpty -or $_.Index -eq 'None')) {
+                return
+            }
+
+            if ($Dirty -and ($_.IsEmpty -or $_.Worktree -eq 'None')) {
+                return
+            }
+
+            if ($WorktreeStatus -and ($_.IsEmpty -or $_.Worktree -notin $WorktreeStatus)) {
+                return
+            }
+
+            if ($IndexStatus -and ($_.IsEmpty -or $_.Index -notin $IndexStatus)) {
+                return
+            }
+
+            return $_
+        }} | Sort-Object (
+            { $_.Index -eq 'None' },
+            { $_.Index -ne 'None' -and $_.Worktree -ne 'None' },
+            { [int]$_.Index },
+            { [int]$_.Worktree })
+    }
+}
+
+[Flags()]
+enum GitFileStatusAction {
+    None = 0
+    Stage = 1 -shl 0
+    Unstage = 1 -shl 1
+    Restore = 1 -shl 2
+}
+
+function Set-GitFileStatus {
+    [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'Path', SupportsShouldProcess)]
+    [Alias('sgst')]
+    param(
+        [Parameter(ValueFromPipeline, Mandatory, ParameterSetName = 'Pipeline')]
+        [ValidateNotNull()]
+        [GitStatusInfo] $InputObject,
+
+        [Parameter(Mandatory, ParameterSetName = 'Path')]
+        [Alias('p')]
+        [string] $Path,
+
+        [Parameter(Mandatory, ParameterSetName = 'LiteralPath')]
+        [Alias('lp')]
+        [string] $LiteralPath,
+
+        [Parameter(Position = 0)]
+        [GitFileStatusAction] $Status = [GitFileStatusAction]::None,
+
+        [Parameter()]
+        [Alias('s')]
+        [switch] $Stage,
+
+        [Parameter()]
+        [Alias('u')]
+        [switch] $Unstage,
+
+        [Parameter()]
+        [Alias('r')]
+        [switch] $Restore,
+
+        [Parameter()]
+        [Alias('gd')]
+        [string] $GitDirectory
+    )
+    begin {
+        if (-not $GitDirectory) {
+            $GitDirectory = git rev-parse --show-toplevel 2> variable:gitErr
+            if ($LASTEXITCODE) {
+                throw $gitErr
+            }
+        }
+
+        function ShouldProc {
+            param($context, $message)
+            end {
+                return $context.ShouldProcess($message, $message, 'Confirm')
+            }
+        }
+
+        function SetStatusImpl {
+            param($context, $gitDir, $status, $path)
+            end {
+                if (($Status -band [GitFileStatusAction]::Stage) -ne 0) {
+                    if (ShouldProc $context "git -C '$gitDir' add '$path'") {
+                        git -C $gitDir add $path
+                    }
+                }
+
+                if (($Status -band [GitFileStatusAction]::Unstage) -ne 0) {
+                    if (ShouldProc $context "git -C '$gitDir' restore --staged '$path'") {
+                        git -C $gitDir restore --staged $path
+                    }
+                }
+
+                if (($Status -band [GitFileStatusAction]::Restore) -ne 0) {
+                    if (ShouldProc $context "git -C '$gitDir' restore '$path'") {
+                        git -C $gitDir restore $path
+                    }
+                }
+            }
+        }
+
+        if ($Stage) {
+            $Status = $Status -bor [GitFileStatusAction]::Stage
+        }
+
+        if ($Unstage) {
+            $Status = $Status -bor [GitFileStatusAction]::Unstage
+        }
+
+        if ($Restore) {
+            $Status = $Status -bor [GitFileStatusAction]::Restore
+        }
+
+        if ($Status -eq [GitFileStatusAction]::None) {
+            $Status = [GitFileStatusAction]::Stage
+        }
+    }
+    process {
+        if (-not $MyInvocation.ExpectingInput -or -not $InputObject -or $InputObject.IsEmpty) {
+            return
+        }
+
+        SetStatusImpl $PSCmdlet $GitDirectory $Status $InputObject.Path
+    }
+    end {
+        if ($MyInvocation.ExpectingInput) {
+            return
+        }
+
+        $providerPaths = $null
+        if ($PSCmdlet.ParameterSetName -eq 'Path') {
+            $providerPaths = $PSCmdlet.SessionState.Path.GetResolvedProviderPathFromPSPath(
+                $Path,
+                [ref] $null)
+        } else {
+            $providerPaths = $PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath($LiteralPath)
+        }
+
+        foreach ($providerPath in $providerPaths) {
+            $relativePath = $PSCmdlet.SessionState.Path.NormalizeRelativePath(
+                $providerPath,
+                $GitDirectory)
+
+            SetStatusImpl $PSCmdlet $GitDirectory $Status $relativePath
+        }
+    }
+}
+
+function New-GitBranch {
+    [CmdletBinding(PositionalBinding = $false)]
+    [Alias('nb')]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [ValidateNotNullOrEmpty()]
+        [Alias('n')]
+        [string] $Name,
+
+        [Parameter(Position = 1)]
+        [ValidateNotNullOrEmpty()]
+        [Alias('sp')]
+        [string] $StartingPoint,
+
+        [Parameter()]
+        [Alias('gd')]
+        [string] $GitDirectory
+    )
+    begin {
+        if (-not $GitDirectory) {
+            $GitDirectory = git rev-parse --show-toplevel 2> variable:gitErr
+            if ($LASTEXITCODE) {
+                throw $gitErr
+            }
+        }
+    }
+    process {
+        if ($StartingPoint) {
+            git -C $GitDirectory checkout -b $Name --no-track $StartingPoint 2> variable:gitErr
+            if ($LASTEXITCODE) {
+                throw $gitErr
+            }
+
+            return Get-GitStatus
+        }
+
+        git -C $GitDirectory checkout -b $Name 2> variable:gitErr
+        if ($LASTEXITCODE) {
+            throw $gitErr
+        }
+
+        return Get-GitStatus
+    }
+}
+
+function Invoke-Git {
+    [CmdletBinding()]
+    param(
+    )
+    begin {
+        { git -C }
+    }
+    process {
+
+    }
+    end {
+
+    }
+}
+
+$completeRemoteName = {
+    param(
+        [string] $commandName,
+        [string] $parameterName,
+        [string] $wordToComplete,
+        [CommandAst] $commandAst,
+        [System.Collections.IDictionary] $fakeBoundParameters
+    )
+    end {
+        $gitDirectory = $fakeBoundParameters['GitDirectory']
+        if (-not $gitDirectory) {
+            $gitDirectory = git rev-parse --show-toplevel 2> variable:gitErr
+            if ($LASTEXITCODE) {
+                throw $gitErr
+            }
+        }
+
+        return git -C $gitDirectory remote --verbose | & { process {
+            $name, $uri, $type = $_ -split '[\t ]'
+            if ($type -eq '(push)') {
+                return
+            }
+
+            return [CompletionResult]::new(
+                $name,
+                $name,
+                [CompletionResultType]::ParameterValue,
+                ('{0} ({1})' -f $name, $uri))
+        }}
+    }
+}
+
+Register-ArgumentCompleter -CommandName Push-WithSetOrigin -ParameterName Remote -ScriptBlock $completeRemoteName
+
+function Write-ClipboardHtmlFragment {
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline)]
+        [string] $Content,
+
+        [Parameter()]
+        [switch] $SetClipboard
+    )
+    begin {
+        $sb = [System.Text.StringBuilder]::new()
+    }
+    process {
+        if ($sb.Length) {
+            $null = $sb.AppendLine()
+        }
+
+        $null = $sb.Append($Content)
+    }
+    end {
+        $finalContent = $sb.ToString()
+        $sw = [System.IO.StreamWriter]::new(
+            ($ms = [System.IO.MemoryStream]::new()),
+            [System.Text.UTF8Encoding]::new($false))
+
+        $fieldNames = (
+            'StartHTML',
+            'EndHTML',
+            'StartFragment',
+            'EndFragment')
+
+        $fields = @{
+            StartHTML = 0
+            EndHTML = 0
+            StartFragment = 0
+            EndFragment = 0
+        }
+
+        $actual = @{
+            StartHTML = 0
+            EndHTML = 0
+            StartFragment = 0
+            EndFragment = 0
+        }
+
+        $sw.WriteLine('Version:0.9')
+
+        $first = $true
+        foreach ($field in $fieldNames) {
+            if ($first) {
+                $first = $false
+            } else {
+                $sw.WriteLine('0000000000')
+            }
+
+            $sw.Write($field)
+            $sw.Write(':')
+            $sw.Flush()
+            $fields[$field] = $ms.Position
+        }
+
+        $sw.WriteLine('0000000000')
+        $sw.Flush()
+        $actual.StartHTML = $ms.Position
+        $sw.WriteLine('<html>')
+        $sw.WriteLine('<body>')
+        $sw.Write('<!--StartFragment-->')
+        $sw.Flush()
+        $actual.StartFragment = $ms.Position
+        $sw.Write($finalContent)
+        $sw.Flush()
+        $actual.EndFragment = $ms.Position
+        $sw.WriteLine('<!--EndFragment-->')
+        $sw.WriteLine('</body>')
+        $sw.WriteLine('</html>')
+        $sw.Flush()
+        $actual.EndHTML = $ms.Position
+        foreach ($field in $fieldNames) {
+            $ms.Position = $fields[$field]
+            $sw.Write('{0:d10}', $actual[$field])
+            $sw.Flush()
+        }
+
+        $bytes = $ms.ToArray()
+        $result = [System.Text.Encoding]::UTF8.GetString($bytes)
+
+        if (-not $SetClipboard) {
+            return $result
+        }
+
+        if (-not ('System.Windows.Forms.Clipboard' -as [type])) {
+            Add-Type -AssemblyName System.Windows.Forms
+        }
+
+        [System.Windows.Forms.Clipboard]::SetData(
+            'HTML Format',
+            $result)
+    }
+}
+
+function Get-PwshGhBackportConsider {
+    [CmdletBinding()]
+    param(
+        [Parameter()]
+        [string[]] $Release = ('7.4', '7.5', '7.6'),
+
+        [Parameter()]
+        [string] $State = 'merged'
+    )
+    begin {
+        $Memo = "`u{1F4CB}"
+        $StopSign = "`u{1F6D1}"
+        $Warning = "`u{26A0}"
+        $CheckmarkButton = "`u{2705}"
+    }
+    end {
+        $allParts = foreach ($minor in $Release) {
+            $jq = '
+                .[] |
+                    {
+                        number: .number,
+                        url: .url,
+                        title: .title,
+                        additions: .additions,
+                        deletions: .deletions,
+                        files: .files | length,
+                    }'
+
+            $fields = ('number', 'title', 'additions', 'deletions', 'files', 'url') -join ','
+
+            gh pr list -R PowerShell/PowerShell --state $State --label "Backport-$minor.x-Consider" --json $fields --jq $jq
+                | ConvertFrom-Json
+                | & {
+                    begin {
+                        return @"
+<h4>$Memo Merged PRs with<span>`u{00a0}</span><code>Backport-$minor.x-Consider</code></h4>
+<table>
+<thead>
+<tr>
+<th><strong>PR</strong></th>
+<th><strong>Title</strong></th>
+<th><strong>+</strong></th>
+<th><strong>-</strong></th>
+<th><strong>Files</strong></th>
+<th><strong>Complexity</strong></th>
+</tr>
+</thead>
+<tbody>
+"@
+                    }
+                    process {
+                        $changes = $_.additions + $_.deletions
+                        $complexity = if ($changes -gt 300) {
+                            "$StopSign Very High"
+                        } elseif ($changes -gt 100) {
+                            "$StopSign High"
+                        } elseif ($changes -gt 20) {
+                            "$Warning Medium"
+                        } else {
+                            "$CheckmarkButton Low"
+                        }
+
+                        return @"
+<tr>
+<td><a href="$($_.url)">#$($_.number)</a></td>
+<td>$(($_.title | ConvertFrom-Markdown).Html)</td>
+<td>$($_.additions)</td>
+<td>$($_.deletions)</td>
+<td>$($_.files)</td>
+<td>$complexity</td>
+</tr>
+"@
+                    }
+                    end {
+                        return @"
+</tbody>
+</table>
+"@
+                    }
+                }
+                | Join-String -Separator "`r`n"
+        }
+
+        Write-ClipboardHtmlFragment ($allParts -join '<br />') -SetClipboard
     }
 }

@@ -39,18 +39,18 @@ public abstract class PSInferredMember
     {
         if (value is PropertyInfo property)
         {
-            return new PSInferredProperty(property);
+            return new PSInferredReflectionProperty(property);
         }
 
         return new PSInferredMethodGroup(value);
     }
 }
 
-public sealed class PSInferredProperty : PSInferredMember
+public sealed class PSInferredReflectionProperty : PSInferredMember
 {
     private readonly PropertyInfo _property;
 
-    internal PSInferredProperty(PropertyInfo property) => _property = property;
+    internal PSInferredReflectionProperty(PropertyInfo property) => _property = property;
 
     public override MemberTypes Kind => MemberTypes.Property;
 
@@ -68,6 +68,27 @@ public sealed class PSInferredProperty : PSInferredMember
     public override MemberInfo[] GetReflectionMembers()
     {
         return [_property];
+    }
+}
+
+public class PSInferredProperty : PSInferredMember
+{
+    private readonly PSProperty _psProperty;
+
+    internal PSInferredProperty(PSProperty psProperty) => _psProperty = psProperty;
+
+    public override MemberTypes Kind => MemberTypes.Property;
+
+    public override string Name => _psProperty.Name;
+
+    public override ImmutableArray<PSTypeName> GetOutputTypes()
+    {
+        return [new PSTypeName(_psProperty.TypeNameOfValue)];
+    }
+
+    public override MemberInfo[] GetReflectionMembers()
+    {
+        throw null!;
     }
 }
 
@@ -197,6 +218,7 @@ public static class Infer
         {
             return Members(
                 types,
+                null,
                 "*",
                 false,
                 completionsOnly: false,
@@ -229,6 +251,7 @@ public static class Infer
         {
             (List<CompletionResult> completions, _) = Members(
                 types,
+                null,
                 wordToComplete,
                 propertiesOnly,
                 completionsOnly: true,
@@ -266,6 +289,7 @@ public static class Infer
         {
             (List<CompletionResult> completions, members) = Members(
                 types,
+                null,
                 wordToComplete,
                 propertiesOnly,
                 completionsOnly: false,
@@ -298,11 +322,19 @@ public static class Infer
 
     internal static (List<CompletionResult> Completions, List<PSInferredMember> Members) Members(
         IList<PSTypeName> inferredTypes,
+        ExpressionAst? expr,
         string memberName,
         bool propertiesOnly = false,
         bool completionsOnly = false,
         PowerShell? pwsh = null)
     {
+        // if (expr is not null
+        //     && ReflectionCache.SafeExprEvaluator.TrySafeEval(expr, ReflectionCache.LocalPipeline.GetExecutionContextFromTLS(), out object? value)
+        //     && value is not null)
+        // {
+        //     return MembersByRuntimeObject(value, memberName, propertiesOnly, completionsOnly, pwsh);
+        // }
+
         bool ownsPwsh = false;
         if (pwsh is null)
         {
@@ -310,7 +342,7 @@ public static class Infer
             pwsh = PowerShell.Create(RunspaceMode.CurrentRunspace);
         }
 
-        WildcardPattern? pattern = memberName is not null or "" or "*"
+        WildcardPattern? pattern = memberName is not null and not "" and not "*"
             ? WildcardPattern.Get(memberName, WildcardOptions.IgnoreCase | WildcardOptions.CultureInvariant)
             : null;
 
@@ -360,6 +392,24 @@ public static class Infer
             }
         }
     }
+
+    // private static (List<CompletionResult> Completions, List<PSInferredMember> Members) MembersByRuntimeObject(
+    //     object value,
+    //     string memberName,
+    //     bool propertiesOnly,
+    //     bool completionsOnly,
+    //     PowerShell? pwsh)
+    // {
+    //     WildcardPattern pattern = new WildcardPattern(
+    //         memberName is null or "" ? "*" : $"{memberName}*",
+    //         WildcardOptions.IgnoreCase | WildcardOptions.CultureInvariant);
+
+    //     PSObject pso = PSObject.AsPSObject(value);
+    //     foreach (PSPropertyInfo property in pso.Properties)
+    //     {
+    //         property.
+    //     }
+    // }
 
     internal static IEnumerable<PSTypeName> InferIndexType(IList<PSTypeName> inferredTypes)
     {

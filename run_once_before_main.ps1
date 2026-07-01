@@ -37,7 +37,6 @@ end {
         'less'
         'gh'
         'gpg'
-        'wsl-ssh-pageant'
         'python'
         'gzip'
         'tar'
@@ -53,7 +52,7 @@ end {
         MaybeInstallScoopApp $app
     }
 
-    scoop install flow-launcher
+    # scoop install flow-launcher
     scoop install https://gist.github.com/SeeminglyScience/8dc717be6e6d362ad65efbdf124922b8/raw/psudad.json
 
     if ([WindowsIdentity]::GetCurrent().Owner.IsWellKnown([WellKnownSidType]::BuiltinAdministratorsSid)) {
@@ -62,14 +61,14 @@ end {
         Start-Process powershell -Verb RunAs -Wait -ArgumentList (
             '-NoLogo',
             '-NoProfile',
-            '-ExecutionPolicy Bypass',
+            '-ExecutionPolicy', 'Bypass',
             '-File', ('"{0}\admin_tasks.ps1"' -f $PSScriptRoot))
     }
 
     MaybeInstallScoopApp bitwarden-cli bw
 
     $env = @{
-        'SSH_AUTH_SOCK' = '\\.\pipe\ssh-pageant'
+        'SSH_AUTH_SOCK' = '\\.\pipe\openssh-ssh-agent'
         'GIT_SSH' = 'C:\Windows\System32\OpenSSH\ssh.exe'
         'LESS' = '--quiet --raw-control-chars --quit-on-intr --ignore-case --prompt :'
         'LESSCHARSET' = 'utf-8'
@@ -82,11 +81,11 @@ end {
         [Environment]::SetEnvironmentVariable($kvp.Name, $kvp.Value, [EnvironmentVariableTarget]::User)
     }
 
-    if (-not (Get-Module -ListAvailable Microsoft.PowerShell.PSResourceGet)) {
-        & "$env:ProgramFiles\PowerShell\7\pwsh.exe" -NoProfile {
-            Install-Module Microsoft.PowerShell.PSResourceGet -Scope CurrentUser -AllowPrerelease -SkipPublisherCheck
-        }
-    }
+    # if (-not (Get-Module -ListAvailable Microsoft.PowerShell.PSResourceGet)) {
+    #     & "$env:ProgramFiles\PowerShell\7\pwsh.exe" -NoProfile {
+    #         Install-Module Microsoft.PowerShell.PSResourceGet -Scope CurrentUser -AllowPrerelease -SkipPublisherCheck
+    #     }
+    # }
 
     & "$env:ProgramFiles\PowerShell\7\pwsh.exe" -NoProfile {
         $modules = (
@@ -103,7 +102,7 @@ end {
             'PSLambda',
             'PSScriptAnalyzer',
             'ThreadJob',
-            'PSEverything',
+            # 'PSEverything',
             'Microsoft.PowerShell.SecretManagement',
             'Microsoft.PowerShell.SecretStore')
 

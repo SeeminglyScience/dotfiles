@@ -34,11 +34,28 @@ internal enum ScriptBlockErrorHandlingBehavior
 
 internal static class ReflectionCache
 {
-    private static ParameterExpression Param<T>(
+    private static LabelTarget Lbl<T>(
+        out LabelTarget label,
+        [CallerArgumentExpression(nameof(label))] string name = "")
+    {
+        label = Label(typeof(T), name);
+        return label;
+    }
+
+    private static ParameterExpression Var<T>(
         out ParameterExpression result,
         [CallerArgumentExpression(nameof(result))] string name = "")
     {
-        return Param(typeof(T), out result, name);
+        result = Variable(typeof(T), name);
+        return result;
+    }
+
+    private static ParameterExpression Param<T>(
+        out ParameterExpression result,
+        [CallerArgumentExpression(nameof(result))] string name = "",
+        bool byRef = false)
+    {
+        return Param(byRef ? typeof(T).MakeByRefType() : typeof(T), out result, name);
     }
 
     private static ParameterExpression Param(
@@ -169,6 +186,40 @@ internal static class ReflectionCache
             throw new InvalidOperationException(
                 $"The ctor 'new {type.FullName}({string.Join(", ", parameterTypes.Select(t => t.Name))})' could not be found.");
         }
+    }
+
+    public static class SafeExprEvaluator
+    {
+        [field: MaybeNull]
+        public static Type Type => field ??= GetSmaType("SafeExprEvaluator");
+
+        public delegate bool TrySafeEvalSignature(
+            ExpressionAst ast,
+            object executionContext,
+            out object? value);
+
+        [field: MaybeNull]
+        public static TrySafeEvalSignature TrySafeEval
+            => field ??= Lambda<TrySafeEvalSignature>(
+                Call(
+                    null,
+                    GetMethodOrThrow(
+                        Type,
+                        nameof(TrySafeEval),
+                        BindTo.Static.NonPublic,
+                        [
+                            typeof(ExpressionAst),
+                            ExecutionContext.Type,
+                            typeof(object).MakeByRefType(),
+                        ]),
+                    [
+                        Param<ExpressionAst>(out ParameterExpression ast),
+                        Convert(Param<object>(out ParameterExpression executionContext), ExecutionContext.Type),
+                        Param<object>(out ParameterExpression value, byRef: true),
+                    ]),
+                $"{nameof(ReflectionCache)}.{nameof(SafeExprEvaluator)}.{nameof(TrySafeEval)}",
+                [ ast, executionContext, value ])
+                .Compile();
     }
 
     public static class PooledRunspaces
@@ -481,6 +532,45 @@ internal static class ReflectionCache
             BindTo.Instance.Any);
     }
 
+    public static class PropertyCacheEntry
+    {
+        [field: MaybeNull]
+        public static Type Type => field ??= GetSmaType("DotNetAdapter+PropertyCacheEntry");
+
+
+        [field: MaybeNull]
+        public static FieldInfo member => field ??= GetFieldOrThrow(
+            Type,
+            "member",
+            BindTo.Instance.Any);
+    }
+
+    public static class PSProperty
+    {
+        [field: MaybeNull]
+        public static Func<SMA.PSProperty, MemberInfo?> GetMemberInfo => field ??= Lambda<Func<SMA.PSProperty, MemberInfo?>>(
+            Block(
+                [Var<object>(out ParameterExpression adapterData)],
+                [
+                    Assign(
+                        adapterData,
+                        Field(
+                            Param<SMA.PSProperty>(out ParameterExpression property),
+                            GetFieldOrThrow(typeof(SMA.PSProperty), "adapterData", BindTo.Instance.NonPublic))),
+                    IfThen(
+                        OrElse(Equal(adapterData, Constant(null)), Not(TypeIs(adapterData, PropertyCacheEntry.Type))),
+                        Return(Lbl<MemberInfo>(out LabelTarget returnLabel), Constant(null, typeof(MemberInfo)))),
+                    Label(
+                        returnLabel,
+                        Field(
+                            adapterData.Convert(PropertyCacheEntry.Type),
+                            PropertyCacheEntry.member))
+
+                ]),
+            [property])
+            .Compile();
+    }
+
     public static class MethodInformation
     {
         [field: MaybeNull]
@@ -599,6 +689,46 @@ internal static class ReflectionCache
                     ignoreTypesWithoutDefaultConstructor,
                 ])
                 .Compile();
+
+        // public delegate void CompleteMemberHelperSignature(
+        //     bool isStatic,
+        //     string memberName,
+        //     ExpressionAst targetExpr,
+        //     object context,
+        //     List<CompletionResult> results);
+
+        // [field: MaybeNull]
+        // public static CompleteMemberHelperSignature CompleteMemberHelper
+        //     => field ??= Lambda<CompleteMemberHelperSignature>(
+        //         Call(
+        //             instance: null,
+        //             GetMethodOrThrow(
+        //                 typeof(SMA.CompletionCompleters),
+        //                 nameof(CompleteMemberHelper),
+        //                 BindTo.Static.Any,
+        //                 [
+        //                     typeof(bool),
+        //                     typeof(string),
+        //                     typeof(ExpressionAst),
+        //                     TypeInferenceContext.Type,
+        //                     typeof(List<CompletionResult>),
+        //                 ]),
+        //             [
+        //                 Param<bool>(out ParameterExpression isStatic),
+        //                 Param<string>(out ParameterExpression memberName),
+        //                 Convert(Param<object>(out ParameterExpression context), TypeInferenceContext.Type),
+        //                 Param<ExpressionAst>(out ParameterExpression targetExpr),
+        //                 Param<List<CompletionResult>>(out ParameterExpression results),
+        //             ]),
+        //         $"{nameof(ReflectionCache)}.{nameof(CompletionCompleters)}.{nameof(CompleteMemberByInferredType)}",
+        //         [
+        //             isStatic,
+        //             memberName,
+        //             targetExpr,
+        //             context,
+        //             results,
+        //         ])
+        //         .Compile();
 
         [field: MaybeNull]
         public static Func<object, bool> IsPropertyMember => field ??= GetMethodOrThrow(

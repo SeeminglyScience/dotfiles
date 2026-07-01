@@ -6,7 +6,20 @@ VSCode/
 .vscode/
 Documents/PowerShell/Profile/src/Profile/obj/
 Documents/PowerShell/Profile/src/Profile/bin/
-
+Documents/PowerShell/Profile/src/Profile/obj/
+UpdateJson/
+AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json.tmpl
+AppData/Local/Packages/Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe/LocalState/keybindings.json
+AppData/Local/Packages/Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe/LocalState/defaults.jsonc
+AppData/Local/Packages/Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe/LocalState/settings.old.json
+scoop/persist/flow-launcher/UserData/Settings/defaults.jsonc
+scoop/persist/flow-launcher/UserData/Settings/Settings-disable.json
+scoop/persist/flow-launcher/UserData/Settings/Settings.bad.json
+**/*.ac.jsonc
+**/*.ac.lua
+**/*.ac.yaml
+**/*.nochez
+.gitconfig
 {{- if .work }}
 AppData/Roaming/apex-config/
 {{- end -}}

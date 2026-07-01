@@ -1,0 +1,40 @@
+startup: true
+enabled:
+  AdvancedPaste: true
+  AlwaysOnTop: false
+  Awake: true
+  CmdNotFound: false
+  CmdPal: false
+  ColorPicker: true
+  CropAndLock: false
+  EnvironmentVariables: true
+  FancyZones: true
+  File Explorer: true
+  File Locksmith: true
+  FindMyMouse: false
+  Hosts: true
+  Image Resizer: true
+  Keyboard Manager: false
+  Measure Tool: true
+  MouseHighlighter: false
+  MouseJump: false
+  MousePointerCrosshairs: false
+  MouseWithoutBorders: false
+  NewPlus: false
+  Peek: true
+  PowerRename: true
+  PowerToys Run: false
+  QuickAccent: false
+  RegistryPreview: true
+  Shortcut Guide: true
+  TextExtractor: false
+  Workspaces: true
+  ZoomIt: false
+show_tray_icon: true
+show_new_updates_toast_notification: true
+download_updates_automatically: true
+show_whats_new_after_updates: true
+enable_experimentation: true
+enable_warnings_elevated_apps: true
+theme: system
+system_theme: dark
