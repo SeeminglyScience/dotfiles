@@ -1177,5 +1177,103 @@
                 </TableRowEntries>
             </TableControl>
         </View>
+        <View>
+            <Name>GitWorktreeInfo</Name>
+            <ViewSelectedBy>
+                <TypeName>GitWorktreeInfo</TypeName>
+            </ViewSelectedBy>
+            <GroupBy>
+                <PropertyName>GitDirectory</PropertyName>
+                <CustomControl>
+                    <CustomEntries>
+                        <CustomEntry>
+                            <CustomItem>
+                                <Text>    GitDirectory: </Text>
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        return [ClassExplorer.Internal._Format]::Variable($_.GitDirectory)
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                                <NewLine />
+                                <NewLine />
+                                <ExpressionBinding>
+                                    <ScriptBlock>
+                                        "$([char]0x1b)[90m(B = IsBare)$([char]0x1b)[0m"
+                                    </ScriptBlock>
+                                </ExpressionBinding>
+                            </CustomItem>
+                        </CustomEntry>
+                    </CustomEntries>
+                </CustomControl>
+            </GroupBy>
+            <TableControl>
+                <TableHeaders>
+                    <TableColumnHeader>
+                        <Label>B</Label>
+                        <Width>1</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>SHA</Label>
+                        <Width>12</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Path</Label>
+                        <Width>30</Width>
+                    </TableColumnHeader>
+                    <TableColumnHeader>
+                        <Label>Branch</Label>
+                    </TableColumnHeader>
+                </TableHeaders>
+                <TableRowEntries>
+                    <TableRowEntry>
+                        <TableColumnItems>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    [ClassExplorer.Internal._Format]::FancyBool($_.IsBare)
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if (-not $_.Sha) {
+                                        return ''
+                                    }
+
+                                    return [ClassExplorer.Internal._Format]::Number(
+                                        $_.Sha.Substring(
+                                            0,
+                                            [Math]::Min($_.Sha.Length, 12)))
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if (-not $_.Path) {
+                                        return ''
+                                    }
+
+                                    $normalizedTargetPath = $_.Path -replace '/', '\'
+                                    $normalizedCurrentPath = $PWD.ProviderPath -replace '/', '\'
+                                    if ($normalizedTargetPath -eq $normalizedCurrentPath) {
+                                        return '.'
+                                    }
+
+                                    return $ExecutionContext.SessionState.Path.NormalizeRelativePath(
+                                        $normalizedTargetPath,
+                                        $normalizedCurrentPath)
+                                </ScriptBlock>
+                            </TableColumnItem>
+                            <TableColumnItem>
+                                <ScriptBlock>
+                                    if (-not $_.Branch) {
+                                        return ''
+                                    }
+
+                                    return [ClassExplorer.Internal._Format]::String($_.Branch)
+                                </ScriptBlock>
+                            </TableColumnItem>
+                        </TableColumnItems>
+                    </TableRowEntry>
+                </TableRowEntries>
+            </TableControl>
+        </View>
     </ViewDefinitions>
 </Configuration>

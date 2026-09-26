@@ -6,8 +6,9 @@ VSCode/
 .vscode/
 Documents/PowerShell/Profile/src/Profile/obj/
 Documents/PowerShell/Profile/src/Profile/bin/
-Documents/PowerShell/Profile/src/Profile/obj/
-UpdateJson/
+Documents/PowerShell/Profile/src/ComGenerator/bin/
+Documents/PowerShell/Profile/src/ComGenerator/obj/
+Documents/PowerShell/Profile/src/Profile/Generated/
 AppData/Local/Packages/Microsoft.WindowsTerminal_8wekyb3d8bbwe/LocalState/settings.json.tmpl
 AppData/Local/Packages/Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe/LocalState/keybindings.json
 AppData/Local/Packages/Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe/LocalState/defaults.jsonc

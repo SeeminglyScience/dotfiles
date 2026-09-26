@@ -3140,7 +3140,9 @@ class GitStatusInfo {
         $this.ObjectNameHead = $objectNameHead
         $this.ObjectNameIndex = $objectNameIndex
         $this.Path = $path
-        $this.PSPath = "FileSystem::$(Join-Path $gitBase $path)"
+        if ($path) {
+            $this.PSPath = "FileSystem::$(Join-Path $gitBase $path)"
+        }
     }
 
     static [GitStatusInfo] Empty([GitBranchStatusInfo] $branchInfo, [string] $gitRepo) {
@@ -3266,10 +3268,6 @@ function Get-GitStatus {
                     $i--
                 }
 
-                if (-not $GitDirectory) {
-                    $GitDirectory = git rev-parse --show-toplevel
-                }
-
                 if ($i -ge $output.Length) {
                     return [GitStatusInfo]::Empty($branchInfo, $GitDirectory)
                 }
@@ -3352,9 +3350,12 @@ function Get-GitStatus {
                 }
             }
         }
+
+        $GitDirectory = Get-GitDirectory $GitDirectory
+
     }
     end {
-        GetStatusItemsImpl | & { process {
+        GetStatusItemsImpl -GitDirectory $GitDirectory | & { process {
             if ($Name -and ($_.IsEmpty -or $_.Path -notlike $Name)) {
                 return
             }
@@ -3428,12 +3429,7 @@ function Set-GitFileStatus {
         [string] $GitDirectory
     )
     begin {
-        if (-not $GitDirectory) {
-            $GitDirectory = git rev-parse --show-toplevel 2> variable:gitErr
-            if ($LASTEXITCODE) {
-                throw $gitErr
-            }
-        }
+        $GitDirectory = Get-GitDirectory $GitDirectory
 
         function ShouldProc {
             param($context, $message)
@@ -3531,12 +3527,7 @@ function New-GitBranch {
         [string] $GitDirectory
     )
     begin {
-        if (-not $GitDirectory) {
-            $GitDirectory = git rev-parse --show-toplevel 2> variable:gitErr
-            if ($LASTEXITCODE) {
-                throw $gitErr
-            }
-        }
+        $GitDirectory = Get-GitDirectory $GitDirectory
     }
     process {
         if ($StartingPoint) {
@@ -3582,12 +3573,7 @@ $completeRemoteName = {
     )
     end {
         $gitDirectory = $fakeBoundParameters['GitDirectory']
-        if (-not $gitDirectory) {
-            $gitDirectory = git rev-parse --show-toplevel 2> variable:gitErr
-            if ($LASTEXITCODE) {
-                throw $gitErr
-            }
-        }
+        $gitDirectory = Get-GitDirectory $gitDirectory
 
         return git -C $gitDirectory remote --verbose | & { process {
             $name, $uri, $type = $_ -split '[\t ]'
@@ -3790,5 +3776,362 @@ function Get-PwshGhBackportConsider {
         }
 
         Write-ClipboardHtmlFragment ($allParts -join '<br />') -SetClipboard
+    }
+}
+
+class GitWorktreeInfo {
+    [string] $Path
+    [string] $Branch
+    [string] $Sha
+    [string[]] $Info = @()
+    [bool] $IsBare
+    [string] $GitDirectory
+}
+
+function Get-GitWorktree {
+    [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'ByPath')]
+    [OutputType([GitWorktreeInfo])]
+    [Alias('ggwt')]
+    param(
+        [Parameter(ParameterSetName = [Parameter]::AllParameterSets)]
+        [Alias('gd')]
+        [string] $GitDirectory,
+
+        [Parameter(Position = 0, ParameterSetName = 'ByPath', ValueFromPipeline)]
+        [SupportsWildcards()]
+        [Alias('p')]
+        [string[]] $Path,
+
+        [Parameter(ParameterSetName = 'ByLiteralPath', ValueFromPipelineByPropertyName)]
+        [Alias('lp', 'FullName', 'PSPath', 'ProviderPath')]
+        [string[]] $LiteralPath
+    )
+    begin {
+        function GetAllWorktrees {
+            param($GitDirectory)
+            end {
+                $output = git -C $GitDirectory worktree list --porcelain -z 2> variable:gitErr
+                if ($LASTEXITCODE) {
+                    throw $gitErr
+                }
+
+                $current = $null
+                foreach ($line in $output -split '\0') {
+                    if (-not $line) {
+                        if ($current) {
+                            # yield
+                            $current
+                            $current = $null
+                        }
+
+                        continue
+                    }
+
+                    if ($line -match '^worktree (?<path>.+)$') {
+                        $current = [GitWorktreeInfo]::new()
+                        $current.GitDirectory = $GitDirectory
+                        $current.Path = $matches['path']
+                        continue
+                    }
+
+                    if (-not $current) {
+                        throw "Expected worktree path first but got: '$line'."
+                    }
+
+                    if ($line -eq 'bare') {
+                        $current.IsBare = $true
+                        continue
+                    }
+
+                    if ($line -match '^HEAD (?<sha>.+)$') {
+                        $current.Sha = $matches['sha']
+                        continue
+                    }
+
+                    if ($line -match '^branch (?<branch>.+)$') {
+                        $current.Branch = $matches['branch'] -replace '^refs/heads/'
+                        continue
+                    }
+
+                    $current.Info += $line
+                }
+            }
+        }
+
+        function AssertFS {
+            param([PSCmdlet] $context, [ProviderInfo] $provider)
+            end {
+                if ($provider.Name -eq [Microsoft.PowerShell.Commands.FileSystemProvider]::ProviderName) {
+                    return $true
+                }
+
+                $context.WriteError(
+                    [ErrorRecord]::new(
+                        [PSArgumentException]::new('Only filesystem paths are supported.'),
+                        'NonFileSystemNotSupported',
+                        [ErrorCategory]::InvalidArgument,
+                        $provider))
+
+                return $false
+            }
+        }
+
+        $GitDirectory = Get-GitDirectory $GitDirectory
+        $worktrees = GetAllWorktrees -GitDirectory $GitDirectory
+        $alreadyEmitted = [HashSet[GitWorktreeInfo]]::new()
+    }
+    process {
+        if (-not $Path -and -not $LiteralPath) {
+            if (-not $MyInvocation.ExpectingInput) {
+                return $worktrees
+            }
+
+            return
+        }
+
+        $resolvedPaths = if ($Path) {
+            foreach ($p in $Path) {
+                $providerInfo = $null
+                $resolved = $PSCmdlet.SessionState.Path.GetResolvedProviderPathFromPSPath(
+                    $p,
+                    [ref] $providerInfo)
+
+                if (AssertFS $providerInfo) {
+                    # emit to if
+                    $resolved
+                }
+            }
+        } else {
+            foreach ($lp in $LiteralPath) {
+                $providerInfo = $null
+                $resolved = $PSCmdlet.SessionState.Path.GetUnresolvedProviderPathFromPSPath(
+                    $lp,
+                    [ref] $providerInfo,
+                    [ref] $null)
+
+                if (AssertFS $providerInfo) {
+                    # emit to if
+                    $resolved
+                }
+            }
+        }
+
+        foreach ($wt in $worktrees) {
+            if ($wt.Path -in $resolvedPaths -and $alreadyEmitted.Add($wt)) {
+                # emit
+                $wt
+            }
+        }
+    }
+}
+
+function Get-GitDirectory {
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0)]
+        [Alias('gd')]
+        [string] $GitDirectory
+    )
+    end {
+        if ($GitDirectory) {
+            return $GitDirectory
+        }
+
+        $GitDirectory = git rev-parse --show-toplevel 2> $null
+        if ($LASTEXITCODE) {
+            $GitDirectory = git rev-parse --git-dir 2> variable:gitErr
+            if ($LASTEXITCODE) {
+                throw $gitErr
+            }
+
+            if (-not [IO.Path]::IsPathRooted($GitDirectory)) {
+                return Join-Path $PWD.ProviderPath $GitDirectory | Split-Path
+            }
+        }
+
+        return $GitDirectory
+    }
+}
+
+function Initialize-GitWorktreeProject {
+    [CmdletBinding(PositionalBinding = $false)]
+    [Alias('igwt')]
+    param(
+        [Parameter(Mandatory, Position = 0)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Repo,
+
+        [Parameter(Position = 1)]
+        [ValidateNotNullOrEmpty()]
+        [string] $Path,
+
+        [Parameter()]
+        [switch] $Http
+    )
+    begin {
+        function MakeRemoteUri {
+            param([bool] $isHttp, [Parameter(ValueFromPipeline)] [string] $repo)
+            process {
+                if ($isHttp) {
+                    return "https://github.com/$repo.git"
+                }
+
+                return "git@github.com:$repo.git"
+            }
+        }
+    }
+    end {
+        $cloneTarget
+        if ($Repo -match '^[\w\.\-]+$') {
+            $userName = gh auth status --json 'hosts' --jq '.hosts."github.com"[0].login'
+            if ($LASTEXITCODE) {
+                throw "Failed to get username from gh cli (Code: $LASTEXITCODE)"
+            }
+
+            if (-not $Path) {
+                $Path = $Repo
+            }
+
+            $cloneTarget = $userName, $Repo -join '/' | MakeRemoteUri $Http
+        } elseif ($Repo -match '^[\w\.\-]+/(?<repo>[\w\.\-]+)$') {
+            if (-not $Path) {
+                $Path = $matches['repo']
+            }
+
+            $cloneTarget = $Repo | MakeRemoteUri $Http
+        } else {
+            $cloneTarget = $Repo
+            if (-not $Path) {
+                $Path = ($Repo | Split-Path -Leaf) -replace '\.git$'
+            }
+        }
+
+        $null = New-Item -ItemType Directory -LiteralPath $Path -ErrorAction Ignore
+        git clone --bare $cloneTarget (Join-Path $Path .git)
+    }
+}
+
+function New-GitWorktree {
+    [CmdletBinding(PositionalBinding = $false)]
+    [Alias('ngwt')]
+    param(
+        [Parameter()]
+        [Alias('gd')]
+        [string] $GitDirectory,
+
+        [Parameter(Position = 0, Mandatory)]
+        [Alias('p')]
+        [string] $Path,
+
+        [Parameter(Position = 1)]
+        [Alias('b')]
+        [string] $Branch,
+
+        [Parameter(Position = 2)]
+        [Alias('c')]
+        [string] $Commit,
+
+        [Parameter()]
+        [Alias('f')]
+        [switch] $Force,
+
+        [Parameter()]
+        [Alias('rb')]
+        [switch] $ResetBranch,
+
+        [Parameter()]
+        [Alias('nb')]
+        [switch] $NewBranch
+    )
+    begin {
+        $GitDirectory = Get-GitDirectory
+    }
+    end {
+        if (-not $Branch) {
+            $Branch = $Path
+        }
+
+        $shouldSetNewBranch = -not $NewBranch -and
+            -not $ResetBranch -and
+            -not (git -C $GitDirectory branch --all --list $Branch --format '%(refname:lstrip=2)')
+
+        if ($shouldSetNewBranch) {
+            $NewBranch = $true
+        }
+
+        if (-not $NewBranch -and -not $ResetBranch) {
+            git -C $GitDirectory worktree add $Path $Branch 2> variable:gitErr
+            if ($LASTEXITCODE) {
+                throw $gitErr
+            }
+
+            return
+        }
+
+        $branchArg = $ResetBranch ? '-B' : '-b'
+        $argList = @()
+        if ($Force) {
+            $argList += '--force'
+        }
+
+        $argList += @($branchArg, $Branch, $Path)
+        if ($Commit) {
+            $argList += @($Commit, '--no-track')
+        }
+
+        git -C $GitDirectory worktree add $argList 2> variable:gitErr
+        if ($LASTEXITCODE) {
+            throw $gitErr
+        }
+    }
+}
+
+Register-ArgumentCompleter -CommandName New-GitWorktree -ParameterName Branch -ScriptBlock {
+    param(
+        [string] $commandName,
+        [string] $parameterName,
+        [string] $wordToComplete,
+        [CommandAst] $commandAst,
+        [System.Collections.IDictionary] $fakeBoundParameters
+    )
+    end {
+        $gitDirectory = $fakeBoundParameters['GitDirectory']
+        $gitDirectory = Get-GitDirectory $gitDirectory
+        return git -C $gitDirectory branch --list --format '%(refname:lstrip=2)' | & { process {
+            if ($PSItem -notlike "$wordToComplete*") {
+                return
+            }
+
+            return [CompletionResult]::new(
+                $PSItem,
+                $PSItem,
+                [CompletionResultType]::ParameterValue,
+                $PSItem)
+        }}
+    }
+}
+
+Register-ArgumentCompleter -CommandName New-GitWorktree -ParameterName Commit -ScriptBlock {
+    param(
+        [string] $commandName,
+        [string] $parameterName,
+        [string] $wordToComplete,
+        [CommandAst] $commandAst,
+        [System.Collections.IDictionary] $fakeBoundParameters
+    )
+    end {
+        $gitDirectory = $fakeBoundParameters['GitDirectory']
+        $gitDirectory = Get-GitDirectory $gitDirectory
+        return git -C $gitDirectory branch --all --list --format '%(refname:lstrip=2)' | & { process {
+            if ($PSItem -notlike "$wordToComplete*") {
+                return
+            }
+
+            return [CompletionResult]::new(
+                $PSItem,
+                $PSItem,
+                [CompletionResultType]::ParameterValue,
+                $PSItem)
+        }}
     }
 }
